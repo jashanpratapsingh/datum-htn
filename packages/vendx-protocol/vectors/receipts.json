@@ -1,0 +1,18 @@
+{
+  "generatedAt": "2026-09-19T22:45:43.347Z",
+  "note": "Host-side golden vectors. firmware-vendor/test/xlang_verify.c must ACCEPT valid and REJECT tampered. This does not claim on-silicon validation.",
+  "facilitatorPublicKeyB64u": "ORNyawaxWxp7NrtNBRXhi1JwR1OezHKvPF7iChKX7eA",
+  "facilitatorPublicKeyHex": "3913726b06b15b1a7b36bb4d0515e18b527047539ecc72af3c5ee20a1297ede0",
+  "validReceipt": "eyJhbW91bnQiOiIxMDAwMCIsImV4cGlyZXNBdCI6MTc1ODI0MDMwMCwiaXNzdWVkQXQiOjE3NTgyNDAwMDAsIm5ldHdvcmsiOiJzb2xhbmEtZGV2bmV0Iiwibm9uY2UiOiI5ZjJjMWE0YjVlNmQ3ZjgwOTFhMmIzYzRkNWU2ZjcwMSIsInBheVRvIjoiRkhjZ2ZkVW1ZTWRhN1A2ZnFLbm5la0hvRTlnc0dIMkt5Z2tiaVpoV3pBSFUiLCJzaWduYXR1cmUiOiI1ajdzVEVTVFNJRyIsInYiOjF9.r9InXuw64ygPe_JQkNBoKBkk7YGAyfysLLQ5YcLCHNoGrqjWcC50MBQPFb_A1uu7UGIsuf2o5Zo92Jg9KqztAA",
+  "tamperedReceipt": "eyJhbW91bnQiOiIxIiwiZXhwaXJlc0F0IjoxNzU4MjQwMzAwLCJpc3N1ZWRBdCI6MTc1ODI0MDAwMCwibmV0d29yayI6InNvbGFuYS1kZXZuZXQiLCJub25jZSI6IjlmMmMxYTRiNWU2ZDdmODA5MWEyYjNjNGQ1ZTZmNzAxIiwicGF5VG8iOiJGSGNnZmRVbVlNZGE3UDZmcUtubmVrSG9FOWdzR0gyS3lna2JpWmhXekFIVSIsInNpZ25hdHVyZSI6IjVqN3NURVNUU0lHIiwidiI6MX0.r9InXuw64ygPe_JQkNBoKBkk7YGAyfysLLQ5YcLCHNoGrqjWcC50MBQPFb_A1uu7UGIsuf2o5Zo92Jg9KqztAA",
+  "body": {
+    "v": 1,
+    "nonce": "9f2c1a4b5e6d7f8091a2b3c4d5e6f701",
+    "payTo": "FHcgfdUmYMda7P6fqKnnekHoE9gsGH2KygkbiZhWzAHU",
+    "amount": "10000",
+    "signature": "5j7sTESTSIG",
+    "network": "solana-devnet",
+    "issuedAt": 1758240000,
+    "expiresAt": 1758240300
+  }
+}

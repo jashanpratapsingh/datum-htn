@@ -95,29 +95,50 @@ tail -f docs/STATUS.md
 
 ## Environment variables
 
-No `.env` file is committed. Create `.env.local` (git-ignored) at the repo root:
+No `.env` file is committed. Create `.env.local` (git-ignored) at the repo root
+with only the variables the code actually reads. Keys are **files**, not env
+vars: facilitator at `keys/facilitator.json`, simulator buyer at
+`data/buyer-wallet.json` (or `keys/buyer.json`), and the Solana-track wallets
+at `keys/{treasury,agent,vendor}.json` (created by `npm run keygen`).
 
 ```bash
-# Solana
-SOLANA_RPC_URL=https://api.devnet.solana.com
+# --- Simulator relay (port 3402) ---
+RELAY_PORT=3402
+RELAY_URL=http://localhost:3402          # agent-buyer/src/index.ts
+
+# --- Web (Vercel / Next.js) ---
+NEXT_PUBLIC_RELAY_URL=https://<your-tunneled-relay>   # baked in at build time
+
+# --- Solana-track spine (ports 4021 / 4022; see npm run demo:solana) ---
 VENDX_NETWORK=solana-devnet
+VENDX_SETTLEMENT=mock                    # or "devnet" for real USDC
+VENDX_RPC_URL=https://api.devnet.solana.com
+VENDX_NODE_PORT=4021
+VENDX_NODE_URL=http://127.0.0.1:4021
+VENDX_FACILITATOR_PORT=4022
+VENDX_FACILITATOR_URL=http://127.0.0.1:4022
+VENDX_ROOT=.                             # repo root for keys/
+VENDX_RESOURCE=/api/telemetry
+VENDX_CSI_PORT=5005
+VENDX_NODE_ID=1
+VENDX_ROUNDS=1
+VENDX_DEMO_REPLAY=0                      # set 1 to prove nonce_replayed
+VENDX_FORCE_TIER=                        # optional: MEASURED_RSSI | SIMULATED | …
 
-# Facilitator key (relay-proxy)
-FACILITATOR_SECRET_KEY=<base58 64-byte Ed25519 secret key>
-FACILITATOR_PUBLIC_KEY=<base58 32-byte Ed25519 public key>
+# --- Badge serial (relay-proxy) ---
+VENDX_PY=.venv-pio/bin/python            # Windows: path to python.exe
+VENDX_BADGE_SCRIPT=scripts/badge.py
+VENDX_BADGE_PORT=/dev/cu.usbmodem101     # Windows default: COM3
+VENDX_SHOT_SCRIPT=scripts/badge_screen.py
+VENDX_ALLOW_SCREEN=0                     # set 1 to enable GET /api/screen
+```
 
-# Buyer wallet
-BUYER_SECRET_KEY=<base58 64-byte Ed25519 secret key>
+Optional persistence (Phase 3): when set, the relay uses Supabase instead of
+in-memory maps for nonces and sales. Without them, in-memory is the default.
 
-# Supabase (local dev — from `supabase status` output)
+```bash
 SUPABASE_URL=http://127.0.0.1:54321
-SUPABASE_ANON_KEY=<from supabase status>
-SUPABASE_SERVICE_KEY=<from supabase status>
-
-# Vercel (web frontend deploy)
-NEXT_PUBLIC_RELAY_URL=https://<your-relay-proxy-url>
-NEXT_PUBLIC_SUPABASE_URL=<production Supabase URL>
-NEXT_PUBLIC_SUPABASE_ANON_KEY=<production anon key>
+SUPABASE_SERVICE_KEY=<service role key>
 ```
 
 The facilitator public key must match what is compiled into the firmware. Changing
@@ -157,9 +178,8 @@ cd web
 vercel --prod
 ```
 
-Set the environment variables in the Vercel dashboard. The `NEXT_PUBLIC_*`
-variables are baked in at build time; server-side variables (`SUPABASE_SERVICE_KEY`)
-are injected at runtime.
+Set the environment variables in the Vercel dashboard. `NEXT_PUBLIC_RELAY_URL`
+is baked in at build time — after changing a tunnel hostname, redeploy.
 
 ## Troubleshooting
 

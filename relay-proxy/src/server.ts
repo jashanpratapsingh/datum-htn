@@ -2,22 +2,38 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { Connection, Keypair } from '@solana/web3.js';
 import { buildDeviceChallenge, verifyDeviceReceipt, VENDOR_PRICE_USD } from './simulator.js';
 import { readBadge, badgeAttached } from './badge-source.js';
 import { captureScreen, screenEnabled } from './badge-screen.js';
 import { settle, type SettleRequest } from './facilitator.js';
 import { recordSale, getSales } from './sales-log.js';
+import { buildLedgerStatus } from './ledger.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = join(__dirname, '../../data');
 
 export const DEFAULT_PORT = 3402;
 
-/** Program ID for the vendx-zk Anchor program on devnet. */
-const VENDX_PROGRAM_ID = 'VnDXzkZKqiG2X8kGBJYDqExQEuCz9TnshCHsf2WVEoY';
-
 /** Must match DAY_CAP_MICRO_USDC in agent-buyer/src/policy.ts. */
 const DAY_CAP_MICRO_USDC = 5_000_000n;
+
+/** Optional RPC — when unset, /api/ledger reports deployed:false without hitting the network (keeps unit tests offline). */
+function ledgerConnection(): Connection | null {
+  const rpc = process.env.VENDX_RPC_URL ?? process.env.VENDX_LEDGER_RPC;
+  if (!rpc) return null;
+  return new Connection(rpc, 'confirmed');
+}
+
+function ledgerAuthorityKeypair(): Keypair | null {
+  const raw = process.env.VENDX_LEDGER_AUTHORITY;
+  if (!raw) return null;
+  try {
+    return Keypair.fromSecretKey(Uint8Array.from(JSON.parse(raw)));
+  } catch {
+    return null;
+  }
+}
 
 function readBody(req: IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -202,18 +218,34 @@ export function createRelayServer(port = DEFAULT_PORT) {
       });
     }
 
-    // GET /api/ledger — on-chain ledger status
+    // GET /api/ledger — on-chain ledger status (deployed flag is live when VENDX_RPC_URL is set)
     if (req.method === 'GET' && pathname === '/api/ledger') {
       const allSales = getSales();
       const totalSettled = allSales.reduce(
         (sum, s) => sum + BigInt(s.amountMicroUsdc),
         0n,
       );
+      const authority = ledgerAuthorityKeypair();
+      const status = await buildLedgerStatus(
+        ledgerConnection(),
+        authority?.publicKey ?? null,
+        'solana-devnet',
+      );
       return json(res, 200, {
-        programId: VENDX_PROGRAM_ID,
-        network: 'solana-devnet',
-        // The Anchor program is compile-verified; no deployed instance yet on devnet.
-        deployed: false,
+        programId: status.programId,
+        network: status.network,
+        deployed: status.deployed,
+        initialized: status.initialized,
+        authority: status.authority,
+        onChain: status.onChain
+          ? {
+              totalBuckets: status.onChain.totalBuckets.toString(),
+              totalSettledMicroUsdc: status.onChain.totalSettledMicroUsdc.toString(),
+              lastCommitSlot: status.onChain.lastCommitSlot.toString(),
+              stateRootHex: Buffer.from(status.onChain.stateRoot).toString('hex'),
+            }
+          : null,
+        lastCommitSignature: status.lastCommitSignature,
         totalBuckets: allSales.length,
         totalSettledMicroUsdc: totalSettled.toString(),
         totalSettledUsd: Number(totalSettled) / 1_000_000,

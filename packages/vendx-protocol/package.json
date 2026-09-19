@@ -10,7 +10,8 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "tsc -p tsconfig.json && node --test \"dist/**/*.test.js\""
+    "test": "tsc -p tsconfig.json && node --test \"dist/**/*.test.js\"",
+    "vectors": "tsc -p tsconfig.json && node scripts/gen-vectors.mjs"
   },
   "dependencies": {
     "@solana/web3.js": "^1.99.0",

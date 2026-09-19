@@ -24,6 +24,7 @@ data/
 .vercel
 .DS_Store
 *.log
+tools/
 # supabase local state
 supabase/.temp/
 supabase/.branches/

@@ -1,7 +1,7 @@
 # VENDX relay-proxy REST API
 
 All routes are served by `relay-proxy/src/server.ts` on port **3402** by
-default (`DEFAULT_PORT`). Override with the `PORT` environment variable.
+default (`DEFAULT_PORT`). Override with the `RELAY_PORT` environment variable.
 
 CORS: `GET /api/telemetry` sets `Access-Control-Allow-Origin: *` on all
 responses so browser-based agents can reach it directly.
@@ -192,8 +192,9 @@ Liveness check.
 ```
 
 `mode` reflects whether a real badge is attached at `VENDX_BADGE_PORT`. It is
-`"badge"` when `/dev/cu.usbmodem101` exists, `"simulator"` otherwise. Source:
-`badgeAttached()` in `relay-proxy/src/badge-source.ts`.
+`"badge"` when the serial device node exists, `"simulator"` otherwise. Source:
+`badgeAttached()` in `relay-proxy/src/badge-source.ts`. Defaults:
+`/dev/cu.usbmodem101` on macOS/Linux, `COM3` on Windows.
 
 ---
 
@@ -301,7 +302,7 @@ compile-verified; devnet deployment is a `solana program deploy` away.
 
 ```jsonc
 {
-  "programId": "VnDXzkZKqiG2X8kGBJYDqExQEuCz9TnshCHsf2WVEoY",
+  "programId": "5ECE7er8mcx67kUKMp8rMLMXN1EikbzumhJV9defAd37",
   "network": "solana-devnet",
   "deployed": false,
   "totalBuckets": 4,
@@ -335,7 +336,8 @@ public key compiled in — rotating it requires a firmware rebuild.
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `PORT` | `3402` | HTTP listen port |
+| `RELAY_PORT` | `3402` | HTTP listen port |
 | `VENDX_PY` | `.venv-pio/bin/python` | Python interpreter for `scripts/badge.py` |
 | `VENDX_BADGE_SCRIPT` | `scripts/badge.py` | Serial bridge script |
-| `VENDX_BADGE_PORT` | `/dev/cu.usbmodem101` | USB serial device for the HTN badge |
+| `VENDX_BADGE_PORT` | `/dev/cu.usbmodem101` (macOS/Linux) or `COM3` (Windows) | USB serial device for the HTN badge |
+| `VENDX_ALLOW_SCREEN` | unset | Set to enable `GET /api/screen` |

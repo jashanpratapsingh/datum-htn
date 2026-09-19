@@ -16,6 +16,7 @@
   "dependencies": {
     "@solana/spl-token": "^0.4.9",
     "@solana/web3.js": "^1.99.0",
+    "@supabase/supabase-js": "^2.49.1",
     "@vendx/protocol": "*",
     "tweetnacl": "^1.0.3"
   },
