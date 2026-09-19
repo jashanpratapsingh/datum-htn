@@ -35,3 +35,10 @@ docs/STATUS.local.md
 badge-screen*.png
 docs/assets/badge-screen*.png
 *.shot.txt
+
+# tsc --incremental state
+*.tsbuildinfo
+
+# playwright output — never commit
+web/test-results/
+web/playwright-report/

@@ -1,271 +1,187 @@
 import PageShell from '@/components/PageShell';
+import { Panel } from '@/components/Panel';
 import { fetchChallenge } from '@/lib/relay';
 import type { PaymentRequiredBody } from '@vendx/protocol';
 import { microUsdcToUsd } from '@vendx/protocol';
 
-function Field({ label, value, mono = false, accent = false }: {
-  label: string;
-  value: React.ReactNode;
-  mono?: boolean;
-  accent?: boolean;
-}) {
+function Field({ label, value, money = false }: { label: string; value: React.ReactNode; money?: boolean }) {
   return (
-    <div className="flex flex-col gap-0.5">
-      <span className="font-[family-name:var(--font-inter)] text-[10px] uppercase tracking-wider text-white/30">
-        {label}
-      </span>
-      <span
-        className={`font-[family-name:var(--font-inter)] text-sm break-all ${
-          mono ? 'font-mono' : ''
-        } ${accent ? 'text-[#5ed29c]' : 'text-white/80'}`}
-      >
-        {value}
-      </span>
+    <div className="px-4 py-3">
+      <div className="plate mb-1">{label}</div>
+      <div className={`readout break-all text-sm ${money ? 'text-amber' : 'text-phosphor/85'}`}>{value}</div>
     </div>
   );
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div className="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden">
-      <div className="px-5 py-3 border-b border-white/10 bg-white/[0.02]">
-        <p className="font-[family-name:var(--font-inter)] text-xs font-semibold text-white/60 uppercase tracking-wider">
-          {title}
-        </p>
-      </div>
-      <div className="px-5 py-5 grid grid-cols-1 md:grid-cols-2 gap-4">{children}</div>
-    </div>
-  );
+function Grid({ children }: { children: React.ReactNode }) {
+  return <div className="grid grid-cols-1 md:grid-cols-2 [&>*:nth-child(n+2)]:panel-divide md:[&>*:nth-child(2)]:border-t-0 md:[&>*:nth-child(even)]:panel-divide-x">{children}</div>;
 }
 
 function ChallengeDecoded({ challenge }: { challenge: PaymentRequiredBody }) {
   const req = challenge.accepts[0];
-  const priceUsd = microUsdcToUsd(req.maxAmountRequired);
-  const expires = new Date(challenge.expiresAt * 1000);
-
   return (
-    <div className="flex flex-col gap-6">
-      <div className="flex items-center gap-3">
-        <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs font-bold font-[family-name:var(--font-inter)] uppercase tracking-wider">
-          HTTP 402 Payment Required
-        </span>
-        <span className="font-[family-name:var(--font-inter)] text-xs text-white/30">
-          live — fetched just now
-        </span>
-      </div>
-
-      <Section title="Envelope">
-        <Field label="x402Version" value={challenge.x402Version} />
-        <Field label="error" value={challenge.error} />
-        <Field label="nonce" value={challenge.nonce} mono accent />
-        <Field
-          label="expiresAt"
-          value={`${challenge.expiresAt} — ${expires.toISOString()}`}
-        />
-      </Section>
-
-      <Section title="Payment requirements — accepts[0]">
-        <Field label="scheme" value={req.scheme} />
-        <Field label="network" value={req.network} accent />
-        <Field
-          label="maxAmountRequired"
-          value={`${req.maxAmountRequired} µUSDC = $${priceUsd.toFixed(6)}`}
-          accent
-        />
-        <Field label="resource" value={req.resource} mono />
-        <Field label="description" value={req.description} />
-        <Field label="mimeType" value={req.mimeType} mono />
-        <Field label="payTo (wallet owner, not ATA)" value={req.payTo} mono />
-        <Field label="asset (USDC mint)" value={req.asset} mono />
-        <Field label="maxTimeoutSeconds" value={req.maxTimeoutSeconds} />
-      </Section>
-
-      <div className="rounded-xl border border-white/10 bg-white/[0.02] px-5 py-5">
-        <p className="font-[family-name:var(--font-inter)] text-xs font-semibold text-white/60 uppercase tracking-wider mb-3">
-          Raw JSON
-        </p>
-        <pre className="font-mono text-[11px] text-white/50 overflow-x-auto whitespace-pre-wrap break-all">
+    <div className="flex flex-col gap-4">
+      <Panel label="Envelope" stamp="HTTP 402 · live" live>
+        <Grid>
+          <Field label="x402Version" value={challenge.x402Version} />
+          <Field label="error" value={challenge.error} />
+          <Field label="nonce" value={challenge.nonce} />
+          <Field label="expiresAt" value={`${challenge.expiresAt} — ${new Date(challenge.expiresAt * 1000).toISOString()}`} />
+        </Grid>
+      </Panel>
+      <Panel label="accepts[0]">
+        <Grid>
+          <Field label="scheme" value={req.scheme} />
+          <Field label="network" value={req.network} />
+          <Field label="maxAmountRequired" value={`${req.maxAmountRequired} µUSDC = ${microUsdcToUsd(req.maxAmountRequired).toFixed(6)} USDC`} money />
+          <Field label="maxTimeoutSeconds" value={req.maxTimeoutSeconds} />
+          <Field label="resource" value={req.resource} />
+          <Field label="mimeType" value={req.mimeType} />
+          <Field label="payTo — wallet owner, not the ATA" value={req.payTo} />
+          <Field label="asset — USDC mint" value={req.asset} />
+        </Grid>
+      </Panel>
+      <Panel label="Raw">
+        <pre className="readout overflow-x-auto whitespace-pre-wrap break-all px-4 py-4 text-[11px] leading-relaxed text-phosphor-dim">
           {JSON.stringify(challenge, null, 2)}
         </pre>
-      </div>
+      </Panel>
     </div>
   );
 }
 
-function StaticSection({
-  title,
-  badge,
-  children,
-}: {
-  title: string;
-  badge: string;
-  children: React.ReactNode;
-}) {
+/*
+  The `badge` span is asserted by the route test: exactly four spans whose text
+  is exactly "Step 1".."Step 4". Keep it a bare <span> with that exact text.
+*/
+function Step({ title, badge, children }: { title: string; badge: string; children: React.ReactNode }) {
   return (
-    <div className="flex flex-col gap-3">
-      <div className="flex items-center gap-3">
-        <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#5ed29c]/10 border border-[#5ed29c]/20 text-[#5ed29c] text-xs font-bold font-[family-name:var(--font-inter)] uppercase tracking-wider">
-          {badge}
-        </span>
-        <h2 className="font-[family-name:var(--font-inter)] font-extrabold text-lg text-white">
-          {title}
-        </h2>
+    <section className="flex flex-col gap-4">
+      <div className="flex items-baseline gap-3 border-b border-rule pb-3">
+        <span className="readout text-xs text-amber">{badge}</span>
+        <h2 className="text-xl text-phosphor">{title}</h2>
       </div>
       {children}
-    </div>
+    </section>
   );
 }
 
+const Code = ({ children }: { children: React.ReactNode }) => (
+  <pre className="readout whitespace-pre-wrap break-all px-4 py-4 text-[12px] leading-relaxed text-phosphor/85">{children}</pre>
+);
+
+const CHECKS: [string, string][] = [
+  ['ed25519_verify(FACILITATOR_PUBKEY, receipt.body)', 'the relay signed it'],
+  ['nonce ∈ issued_nonces', 'this challenge was ours'],
+  ['nonce not already used', 'replay defence, without a database'],
+  ['receipt.expiresAt > now', 'still inside maxTimeoutSeconds'],
+  ['receipt.payTo == VENDOR_WALLET', 'paid to us, not redirected'],
+  ['receipt.amount ≥ price', 'full price, not discounted'],
+  ['receipt.network == expected', 'the right chain'],
+];
+
+const FAILURES = ['missing_header','malformed_header','bad_signature','nonce_unknown','nonce_replayed','nonce_expired','wrong_recipient','insufficient_amount','wrong_network','receipt_expired'];
+
 export default async function ProtocolPage() {
-  const challengeResult = await fetchChallenge();
+  const ch = await fetchChallenge();
 
   return (
     <PageShell
-      title="Protocol Explorer"
-      subtitle="Inspect a real 402 challenge field by field, then follow the payment to receipt."
+      title="Protocol explorer"
+      subtitle="Take a real 402 apart field by field, then follow the payment through to the receipt the device checks."
+      stamp={ch.ok ? 'live challenge' : 'no link'}
     >
-      <div className="flex flex-col gap-16">
-
-        {/* Step 1 — 402 challenge */}
-        <StaticSection title="HTTP 402 Challenge" badge="Step 1">
-          <p className="font-[family-name:var(--font-inter)] text-sm text-white/50 mb-4">
-            The device advertises what it sells and what it costs. The nonce is single-use — a new
-            one is minted for every request. The buyer must consume it before{' '}
-            <code className="text-[#5ed29c] text-xs">expiresAt</code>.
+      <div className="flex flex-col gap-14">
+        <Step title="The device says what it costs" badge="Step 1">
+          <p className="max-w-2xl text-[15px] leading-relaxed text-phosphor/80">
+            The 402 advertises what is for sale and the price. The nonce is single-use — a fresh one
+            is minted per request and must be spent before <span className="readout text-phosphor">expiresAt</span>.
           </p>
-
-          {challengeResult.ok ? (
-            <ChallengeDecoded challenge={challengeResult.data} />
+          {ch.ok ? (
+            <ChallengeDecoded challenge={ch.data} />
           ) : (
-            <div className="rounded-xl border border-white/10 bg-white/[0.02] p-8 text-center">
-              <p className="font-[family-name:var(--font-inter)] text-xs text-white/30 uppercase tracking-wider mb-2">
-                {challengeResult.reason === 'offline' ? 'Relay offline' : 'Challenge unavailable'}
-              </p>
-              <p className="font-[family-name:var(--font-inter)] text-sm text-white/50">
+            <Panel label={ch.reason === 'offline' ? 'no relay link' : 'challenge unavailable'}>
+              <p className="readout px-4 py-10 text-center text-sm text-phosphor-dim">
                 Start relay-proxy to fetch a live challenge.
               </p>
-            </div>
+            </Panel>
           )}
-        </StaticSection>
+        </Step>
 
-        {/* Step 2 — X-PAYMENT header */}
-        <StaticSection title="X-PAYMENT Header" badge="Step 2">
-          <p className="font-[family-name:var(--font-inter)] text-sm text-white/50 mb-4">
-            The buyer sends this with their replay request — base64url of canonical JSON. The nonce
-            echoes the challenge and the signature proves the transfer settled on-chain.
+        <Step title="The buyer proves it paid" badge="Step 2">
+          <p className="max-w-2xl text-[15px] leading-relaxed text-phosphor/80">
+            Sent with the replay request as base64url of canonical JSON. The nonce echoes the challenge;
+            the signature is the settled Solana transaction.
           </p>
-          <div className="rounded-xl border border-white/10 bg-white/[0.02] px-5 py-5">
-            <pre className="font-mono text-[11px] text-white/60 whitespace-pre-wrap break-all">{`{
+          <Panel label="X-PAYMENT">
+            <Code>{`{
   "x402Version": 1,
-  "scheme": "exact",
-  "network": "solana-devnet",
+  "scheme":      "exact",
+  "network":     "solana-devnet",
   "payload": {
     "signature": "<base58 settled Solana tx>",
     "nonce":     "<hex — echoes the challenge nonce>"
   }
-}`}</pre>
-            <p className="font-[family-name:var(--font-inter)] text-xs text-white/30 mt-3">
-              Header: <code className="text-[#5ed29c]">X-PAYMENT: &lt;base64url of the above&gt;</code>
-            </p>
-          </div>
-        </StaticSection>
+}`}</Code>
+          </Panel>
+        </Step>
 
-        {/* Step 3 — Signed receipt */}
-        <StaticSection title="Signed Receipt (VENDX extension)" badge="Step 3">
-          <p className="font-[family-name:var(--font-inter)] text-sm text-white/50 mb-4">
-            The relay settles on-chain and signs a receipt with its Ed25519 facilitator key. The
-            device holds one 32-byte public key and verifies offline in ~40ms — no TLS, no RPC, no
-            heap spike. The signature covers the base64url text as transmitted, so the device never
-            re-serializes JSON to verify.
+        <Step title="The relay signs a receipt" badge="Step 3">
+          <p className="max-w-2xl text-[15px] leading-relaxed text-phosphor/80">
+            The relay settles on-chain and signs a receipt with its Ed25519 key. The device holds one
+            32-byte public key and verifies offline in about 40ms — no TLS, no RPC, no heap spike. The
+            signature covers the base64url text exactly as transmitted, so the device never has to
+            re-serialise JSON to check it.
           </p>
-          <div className="flex flex-col gap-3">
-            <div className="rounded-xl border border-white/10 bg-white/[0.02] px-5 py-5">
-              <p className="font-[family-name:var(--font-inter)] text-xs font-semibold text-white/40 uppercase tracking-wider mb-2">
-                Receipt body (base64url JSON)
-              </p>
-              <pre className="font-mono text-[11px] text-white/60 whitespace-pre-wrap break-all">{`{
-  "v": 1,
+          <Panel label="Receipt body" stamp="base64url JSON">
+            <Code>{`{
+  "v":         1,
   "nonce":     "<hex — the challenge nonce>",
-  "payTo":     "<vendor wallet base58>",
-  "amount":    "<micro-USDC string>",
+  "payTo":     "<vendor wallet, base58>",
+  "amount":    "<micro-USDC, string>",
   "signature": "<base58 Solana tx>",
   "network":   "solana-devnet",
   "issuedAt":  <unix seconds>,
   "expiresAt": <unix seconds>
-}`}</pre>
+}`}</Code>
+            <div className="panel-divide px-4 py-3">
+              <div className="plate mb-1">on the wire</div>
+              <code className="readout break-all text-xs text-phosphor">X-Payment-Receipt: {'<body_b64url>.<sig_b64url>'}</code>
             </div>
-            <div className="rounded-xl border border-white/10 bg-white/[0.02] px-5 py-4">
-              <p className="font-[family-name:var(--font-inter)] text-xs font-semibold text-white/40 uppercase tracking-wider mb-2">
-                Wire format — header value
-              </p>
-              <code className="font-mono text-xs text-[#5ed29c] break-all">
-                X-Payment-Receipt: {'<body_b64url>.<sig_b64url>'}
-              </code>
-            </div>
-          </div>
-        </StaticSection>
+          </Panel>
+        </Step>
 
-        {/* Step 4 — What the device checks */}
-        <StaticSection title="Device Verification Checklist" badge="Step 4">
-          <p className="font-[family-name:var(--font-inter)] text-sm text-white/50 mb-4">
-            The ESP32 runs these checks in order. Any failure returns 402 with a specific{' '}
-            <code className="text-[#5ed29c] text-xs">error</code> field.
+        <Step title="What the device checks" badge="Step 4">
+          <p className="max-w-2xl text-[15px] leading-relaxed text-phosphor/80">
+            In this order. Any failure returns 402 with a specific <span className="readout text-phosphor">error</span>.
+            Signature comes first, so nothing about live nonces leaks to anyone without a valid one.
           </p>
-          <ol className="flex flex-col gap-3">
-            {[
-              ['ed25519_verify(FACILITATOR_PUBKEY, receipt.body)', 'Proves relay signed it'],
-              ['nonce ∈ issued_nonces', 'Proves this challenge was ours'],
-              ['nonce not already used', 'Replay defence without state'],
-              ['receipt.expiresAt > now', 'Expires within maxTimeoutSeconds'],
-              ['receipt.payTo == VENDOR_WALLET', 'Payment went to us, not redirected'],
-              ['receipt.amount ≥ price', 'Full price paid, not discounted'],
-              ['receipt.network == expected_network', 'Right chain'],
-            ].map(([check, why], i) => (
-              <li key={i} className="flex items-start gap-4">
-                <span className="font-[family-name:var(--font-inter)] text-[#5ed29c] text-xs font-bold w-5 shrink-0 mt-0.5">
-                  {String(i + 1).padStart(2, '0')}
-                </span>
-                <div className="flex flex-col gap-0.5">
-                  <code className="font-mono text-xs text-white/70">{check}</code>
-                  <span className="font-[family-name:var(--font-inter)] text-xs text-white/30">
-                    {why}
-                  </span>
-                </div>
-              </li>
-            ))}
-          </ol>
-        </StaticSection>
+          <Panel label="Verification order">
+            <ol>
+              {CHECKS.map(([check, why], i) => (
+                <li key={check} className={`flex items-baseline gap-4 px-4 py-3 ${i > 0 ? 'panel-divide' : ''}`}>
+                  <span className="readout w-5 shrink-0 text-xs text-phosphor-dim">{i + 1}</span>
+                  <div>
+                    <code className="readout text-xs text-phosphor">{check}</code>
+                    <div className="text-xs text-phosphor-dim">{why}</div>
+                  </div>
+                </li>
+              ))}
+            </ol>
+          </Panel>
+        </Step>
 
-        {/* Failure codes */}
-        <StaticSection title="Failure Reasons" badge="types.ts">
-          <p className="font-[family-name:var(--font-inter)] text-sm text-white/50 mb-4">
-            Every failure has a machine-readable reason defined in{' '}
-            <code className="text-[#5ed29c] text-xs">packages/vendx-protocol/src/types.ts</code>{' '}
-            and mirrored in{' '}
-            <code className="text-[#5ed29c] text-xs">firmware-vendor/src/verifier.cpp</code>.
+        <Step title="Every way it can fail" badge="types.ts">
+          <p className="max-w-2xl text-[15px] leading-relaxed text-phosphor/80">
+            Each reason is defined once in <span className="readout text-phosphor">packages/vendx-protocol/src/types.ts</span> and
+            mirrored in <span className="readout text-phosphor">firmware-vendor/src/verifier.cpp</span>.
           </p>
           <div className="flex flex-wrap gap-2">
-            {[
-              'missing_header',
-              'malformed_header',
-              'bad_signature',
-              'nonce_unknown',
-              'nonce_replayed',
-              'nonce_expired',
-              'wrong_recipient',
-              'insufficient_amount',
-              'wrong_network',
-              'receipt_expired',
-            ].map((code) => (
-              <code
-                key={code}
-                className="font-mono text-xs text-white/50 border border-white/10 rounded px-2 py-1"
-              >
-                {code}
-              </code>
+            {FAILURES.map((f) => (
+              <code key={f} className="readout border border-rule px-2 py-1 text-xs text-phosphor/80">{f}</code>
             ))}
           </div>
-        </StaticSection>
+        </Step>
       </div>
     </PageShell>
   );

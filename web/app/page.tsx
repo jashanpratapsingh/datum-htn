@@ -1,23 +1,23 @@
 import NavBar from '@/components/NavBar';
 import HeroSection from '@/components/HeroSection';
-import PaymentHandshake from '@/components/PaymentHandshake';
-import VendorMap from '@/components/VendorMap';
 import TelemetryTicker from '@/components/TelemetryTicker';
-import PolicyGauge from '@/components/PolicyGauge';
-import CompressionSavings from '@/components/CompressionSavings';
-import Explorer from '@/components/Explorer';
+import VendorMap from '@/components/VendorMap';
 
+/*
+  The landing page is the hero plus two live strips. The five marketing
+  sections that used to sit here were permanently-empty placeholders that
+  duplicated working pages (/agent, /policy, /ledger); the hero links to the
+  real ones instead.
+*/
 export default function Home() {
   return (
-    <main>
+    <main className="min-h-screen bg-glass">
       <NavBar />
       <HeroSection />
-      <PaymentHandshake />
-      <VendorMap />
-      <TelemetryTicker />
-      <PolicyGauge />
-      <CompressionSavings />
-      <Explorer />
+      <div className="mx-auto max-w-6xl px-5 pb-24 sm:px-8 md:px-12">
+        <VendorMap />
+        <TelemetryTicker />
+      </div>
     </main>
   );
 }

@@ -1,16 +1,15 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Menu, X } from 'lucide-react';
 
-const NAV_LINKS = [
-  { label: 'Devices', href: '/devices' },
-  { label: 'Marketplace', href: '/marketplace' },
-  { label: 'Agent', href: '/agent' },
-  { label: 'Policy', href: '/policy' },
-  { label: 'Ledger', href: '/ledger' },
-  { label: 'Protocol', href: '/protocol' },
-  { label: 'Docs', href: '/docs' },
+const LINKS = [
+  { href: '/devices', label: 'Devices' },
+  { href: '/marketplace', label: 'Marketplace' },
+  { href: '/agent', label: 'Agent' },
+  { href: '/policy', label: 'Policy' },
+  { href: '/ledger', label: 'Ledger' },
+  { href: '/protocol', label: 'Protocol' },
+  { href: '/docs', label: 'Docs' },
 ];
 
 export default function NavBar() {
@@ -20,75 +19,98 @@ export default function NavBar() {
 
   useEffect(() => {
     if (!open) return;
-
-    // Move focus into the menu when it opens
     firstLinkRef.current?.focus();
 
-    function handleKeyDown(e: KeyboardEvent) {
+    function onKeyDown(e: KeyboardEvent) {
       if (e.key === 'Escape') {
         setOpen(false);
+        return;
       }
-
-      // Focus trap: keep Tab inside the overlay
-      if (e.key === 'Tab' && menuRef.current) {
-        const focusable = Array.from(
-          menuRef.current.querySelectorAll<HTMLElement>(
-            'a[href], button, [tabindex]:not([tabindex="-1"])',
-          ),
-        );
-        const first = focusable[0];
-        const last = focusable[focusable.length - 1];
-
-        if (e.shiftKey && document.activeElement === first) {
-          e.preventDefault();
-          last.focus();
-        } else if (!e.shiftKey && document.activeElement === last) {
-          e.preventDefault();
-          first.focus();
-        }
+      if (e.key !== 'Tab' || !menuRef.current) return;
+      const focusables = menuRef.current.querySelectorAll<HTMLElement>(
+        'a[href], button, [tabindex]:not([tabindex="-1"])',
+      );
+      if (focusables.length === 0) return;
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
       }
     }
 
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
   }, [open]);
 
   return (
-    <header className="absolute top-0 left-0 right-0 z-50 flex items-center justify-between px-6 lg:px-12 py-6">
-      {/* Logo */}
-      <a
-        href="/"
-        className="text-white font-[family-name:var(--font-inter)] font-extrabold text-xl tracking-tight"
-        aria-label="VENDX home"
-      >
-        VENDX
-      </a>
-
-      {/* Desktop nav */}
-      <nav aria-label="Primary navigation" className="hidden md:flex items-center gap-8">
-        {NAV_LINKS.map(({ label, href }) => (
-          <a
-            key={label}
-            href={href}
-            className="font-[family-name:var(--font-inter)] text-base text-white/80 hover:text-[#5ed29c] transition-colors duration-200"
+    <>
+      <header className={`absolute left-0 right-0 top-0 flex items-center justify-between px-5 py-4 sm:px-8 sm:py-5 ${open ? 'z-[70]' : 'z-50'}`}>
+        <a
+          href="/"
+          aria-label="VENDX home"
+          className="flex items-center gap-3 text-phosphor hover:text-phosphor/75 transition-colors"
+        >
+          <span className="text-[21px] tracking-tight sm:text-[26px]">
+            VENDX<sup className="text-[0.5em] align-super">(R)</sup>
+          </span>
+          <span
+            aria-hidden="true"
+            className="select-none text-[25px] text-phosphor/55 sm:text-[30px]"
+            style={{ letterSpacing: '-0.02em' }}
           >
-            {label}
-          </a>
-        ))}
-      </nav>
+            ✳︎
+          </span>
+        </a>
 
-      {/* Mobile hamburger */}
-      <button
-        className="md:hidden text-white p-2 -mr-2"
-        aria-label="Open navigation menu"
-        aria-expanded={open}
-        aria-controls="mobile-menu"
-        onClick={() => setOpen(true)}
-      >
-        <Menu size={24} />
-      </button>
+        <nav
+          aria-label="Primary navigation"
+          className="hidden items-center md:flex font-[family-name:var(--font-readout)] text-[14px] text-phosphor/70"
+        >
+          {LINKS.map((l, i) => (
+            <span key={l.href}>
+              <a href={l.href} className="hover:text-phosphor transition-colors">
+                {l.label}
+              </a>
+              {i < LINKS.length - 1 && <span className="text-phosphor/25">, </span>}
+            </span>
+          ))}
+        </nav>
 
-      {/* Mobile overlay */}
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          aria-label={open ? 'Close navigation menu' : 'Open navigation menu'}
+          aria-expanded={open}
+          aria-controls="mobile-menu"
+          className="flex flex-col gap-[5px] p-1 md:hidden"
+        >
+          <span
+            className={`h-[2px] w-6 bg-phosphor transition-transform duration-300 ${
+              open ? 'translate-y-[7px] rotate-45' : ''
+            }`}
+          />
+          <span
+            className={`h-[2px] w-6 bg-phosphor transition-opacity duration-300 ${
+              open ? 'opacity-0' : ''
+            }`}
+          />
+          <span
+            className={`h-[2px] w-6 bg-phosphor transition-transform duration-300 ${
+              open ? '-translate-y-[7px] -rotate-45' : ''
+            }`}
+          />
+        </button>
+      </header>
+
+      {/*
+        Conditionally mounted, not faded with opacity. An opacity-0 overlay is
+        still hit-testable and still "visible" to assistive tech and to the
+        focus-trap test, which is exactly the bug this pattern usually ships.
+      */}
       {open && (
         <div
           id="mobile-menu"
@@ -96,31 +118,29 @@ export default function NavBar() {
           role="dialog"
           aria-modal="true"
           aria-label="Navigation menu"
-          className="fixed inset-0 z-50 bg-[#070b0a]/95 flex flex-col items-center justify-center gap-8 md:hidden"
+          className="fixed inset-0 z-[60] flex flex-col justify-center gap-7 bg-glass/97 px-8 backdrop-blur-sm md:hidden"
         >
+          {LINKS.map((l, i) => (
+            <a
+              key={l.href}
+              href={l.href}
+              ref={i === 0 ? firstLinkRef : undefined}
+              onClick={() => setOpen(false)}
+              className="text-[32px] font-medium text-phosphor hover:text-phosphor/70 transition-colors"
+            >
+              {l.label}
+            </a>
+          ))}
           <button
-            className="absolute top-6 right-6 text-white p-2"
-            aria-label="Close navigation menu"
+            type="button"
             onClick={() => setOpen(false)}
+            aria-label="Close navigation menu"
+            className="mt-2 self-start font-[family-name:var(--font-readout)] text-[15px] text-phosphor/60 underline underline-offset-4 hover:text-phosphor"
           >
-            <X size={24} />
+            Close
           </button>
-
-          <nav className="flex flex-col items-center gap-8">
-            {NAV_LINKS.map(({ label, href }, i) => (
-              <a
-                key={label}
-                href={href}
-                ref={i === 0 ? firstLinkRef : undefined}
-                className="font-[family-name:var(--font-inter)] text-2xl text-white hover:text-[#5ed29c] transition-colors duration-200"
-                onClick={() => setOpen(false)}
-              >
-                {label}
-              </a>
-            ))}
-          </nav>
         </div>
       )}
-    </header>
+    </>
   );
 }

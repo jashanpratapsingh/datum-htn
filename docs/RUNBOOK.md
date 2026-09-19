@@ -172,3 +172,18 @@ are injected at runtime.
 | `wrong_recipient` from device | `payTo` in receipt != device wallet | Confirm relay is quoting the correct vendor wallet |
 | `insufficient_amount` | Buyer underpaid | Check `maxAmountRequired` in the challenge; buyer must transfer ≥ that amount |
 | Protocol package missing from `node_modules` | Workspace not linked | Run `npm install` from repo root, not from inside the package directory |
+
+## Frontend tests: two modes
+
+```sh
+cd web && npx playwright test          # relay down: 11 pass, 9 skip
+# in another shell: node relay-proxy/dist/index.js
+cd web && npx playwright test          # relay up:   20 pass
+```
+
+`routes.spec.ts` only ever proves each page's empty state. `relay-up.spec.ts`
+runs a real handshake and loads every page populated — it **skips** (does not
+pass) when the relay is unreachable, so a green relay-down run is honest about
+what it did not check. Before trusting any screenshot, kill anything on `:3000`;
+`playwright.config` reuses an existing server and will happily show you a stale
+build.

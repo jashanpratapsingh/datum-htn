@@ -1,26 +1,22 @@
-import NavBar from '@/components/NavBar';
+import NavBar from './NavBar';
+import PanelHeader from './PanelHeader';
 
-interface Props {
+export default function PageShell({
+  children,
+  title,
+  subtitle,
+  stamp,
+}: {
   children: React.ReactNode;
   title: string;
   subtitle?: string;
-}
-
-export default function PageShell({ children, title, subtitle }: Props) {
+  stamp?: React.ReactNode;
+}) {
   return (
-    <main className="min-h-screen bg-[#070b0a] text-white">
+    <main className="min-h-screen bg-glass">
       <NavBar />
-      <div className="pt-28 px-6 md:px-12 lg:px-16 max-w-6xl mx-auto pb-24">
-        <div className="mb-10 border-l-2 border-[#5ed29c]/30 pl-5">
-          <h1 className="font-[family-name:var(--font-instrument)] text-4xl md:text-5xl text-white leading-tight mb-3">
-            {title}
-          </h1>
-          {subtitle && (
-            <p className="font-[family-name:var(--font-inter)] text-sm text-white/50 max-w-2xl leading-relaxed">
-              {subtitle}
-            </p>
-          )}
-        </div>
+      <div className="mx-auto max-w-6xl px-5 pb-24 pt-28 sm:px-8 md:px-12">
+        <PanelHeader title={title} subtitle={subtitle} stamp={stamp} />
         {children}
       </div>
     </main>

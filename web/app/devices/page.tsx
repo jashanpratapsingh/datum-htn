@@ -1,152 +1,114 @@
 import PageShell from '@/components/PageShell';
+import { Panel } from '@/components/Panel';
 import { SourceBadge } from '@/components/SourceBadge';
 import { RelayOffline } from '@/components/RelayOffline';
-import { Sparkline } from '@/components/Sparkline';
 import { fetchDevices } from '@/lib/relay';
 import type { DeviceEntry } from '@/lib/relay';
-import { ChevronRight, Wifi } from 'lucide-react';
 
-function heapPercent(free: number | undefined, total = 327_680): number {
-  if (!free) return 0;
-  return Math.round((free / total) * 100);
-}
+const HEAP_TOTAL = 327_680;
 
 function HeapBar({ free, largest }: { free?: number; largest?: number }) {
-  const pct = heapPercent(free);
-  const color = pct > 50 ? '#5ed29c' : pct > 25 ? '#f59e0b' : '#ef4444';
+  const pct = free ? Math.round((free / HEAP_TOTAL) * 100) : 0;
+  // Heap is not money, so it never goes amber — it dims, then alarms.
+  const tone = pct > 30 ? 'bg-phosphor' : pct > 15 ? 'bg-phosphor-dim' : 'bg-alarm';
   return (
     <div className="flex items-center gap-2">
-      <div className="h-1.5 w-20 rounded-full bg-white/10 overflow-hidden">
-        <div
-          className="h-full rounded-full transition-all"
-          style={{ width: `${pct}%`, backgroundColor: color }}
-        />
+      <div className="h-1 w-20 overflow-hidden bg-rule">
+        <div className={`h-full ${tone}`} style={{ width: `${pct}%` }} />
       </div>
-      <span className="font-[family-name:var(--font-inter)] font-mono text-[10px] text-white/40">
-        {free != null ? `${Math.round(free / 1024)}KB` : '—'}
-        {largest != null ? ` / ${Math.round(largest / 1024)}KB` : ''}
+      <span className="readout text-[11px] text-phosphor-dim">
+        {free != null ? `${Math.round(free / 1024)}K` : '—'}
+        {largest != null ? ` / ${Math.round(largest / 1024)}K` : ''}
       </span>
     </div>
   );
 }
 
-function DeviceCard({ device }: { device: DeviceEntry }) {
-  const boots = device.bootCount ?? 0;
+function DeviceRow({ device }: { device: DeviceEntry }) {
   const reasons = device.resetReasons
     ? Object.entries(device.resetReasons).sort((a, b) => b[1] - a[1])
     : [];
   const topReset = reasons[0];
   const lastSeen = device.lastSeen ? new Date(device.lastSeen * 1000) : null;
-
-  // Fake sparkline from bootCount + random seed (no invented data, just structural)
-  const sparkData: number[] = [];
+  const earned = Number(device.earningsMicroUsdc ?? '0') / 1e6;
 
   return (
     <a
       href={`/devices/${encodeURIComponent(device.id)}`}
-      className="group flex flex-col gap-4 rounded-xl border border-white/10 bg-white/[0.02] px-5 py-5 hover:border-white/20 hover:bg-white/[0.04] transition-all duration-200"
+      className="group block panel-divide px-4 py-4 transition-colors hover:bg-glass-deep"
     >
-      <div className="flex items-start justify-between gap-4">
-        <div className="flex flex-col gap-1.5">
-          <div className="flex items-center gap-2 flex-wrap">
+      <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
+        <div className="min-w-0 flex-1">
+          <div className="mb-1.5 flex flex-wrap items-center gap-2">
             <SourceBadge source={device.source} />
-            {device.chip && (
-              <span className="font-[family-name:var(--font-inter)] text-[10px] text-white/30 font-mono uppercase">
-                {device.chip}
-              </span>
-            )}
+            {device.chip && <span className="plate">{device.chip}</span>}
           </div>
-          <p className="font-[family-name:var(--font-inter)] font-semibold text-sm text-white font-mono break-all">
-            {device.id}
-          </p>
+          <p className="readout truncate text-sm text-phosphor group-hover:bloom">{device.id}</p>
         </div>
-        <div className="flex items-center gap-2 shrink-0">
-          {sparkData.length > 1 && <Sparkline data={sparkData} width={60} height={20} />}
-          <ChevronRight
-            size={14}
-            className="text-white/30 group-hover:text-[#5ed29c] transition-colors"
-            aria-hidden="true"
-          />
+        <div className="text-right">
+          <div className="plate mb-1">earned</div>
+          <div className="readout bloom-amber text-xl leading-none text-amber">
+            {earned.toFixed(4)}
+            <span className="ml-1 text-[0.5em] text-phosphor-dim">USDC</span>
+          </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 border-t border-white/5 pt-4">
+      <dl className="mt-4 grid grid-cols-2 gap-x-6 gap-y-3 border-t border-rule pt-3 md:grid-cols-4">
         <div>
-          <p className="font-[family-name:var(--font-inter)] text-[10px] text-white/30 uppercase tracking-wider mb-1">
-            Free heap
-          </p>
-          <HeapBar free={device.freeHeap} largest={device.largestBlock} />
+          <dt className="plate mb-1">free heap</dt>
+          <dd><HeapBar free={device.freeHeap} largest={device.largestBlock} /></dd>
         </div>
-
         <div>
-          <p className="font-[family-name:var(--font-inter)] text-[10px] text-white/30 uppercase tracking-wider mb-1">
-            Boot count
-          </p>
-          <p className="font-[family-name:var(--font-inter)] font-mono text-sm text-white/70">
-            {boots}
-          </p>
+          <dt className="plate mb-1">boots</dt>
+          <dd className="readout text-sm text-phosphor/80">{device.bootCount ?? '—'}</dd>
         </div>
-
         <div>
-          <p className="font-[family-name:var(--font-inter)] text-[10px] text-white/30 uppercase tracking-wider mb-1">
-            Top reset reason
-          </p>
-          <p className="font-[family-name:var(--font-inter)] font-mono text-sm text-white/70">
-            {topReset ? `#${topReset[0]} × ${topReset[1]}` : '—'}
-          </p>
+          <dt className="plate mb-1">top reset</dt>
+          <dd className="readout text-sm text-phosphor/80">
+            {topReset ? `#${topReset[0]} ×${topReset[1]}` : '—'}
+          </dd>
         </div>
-
         <div>
-          <p className="font-[family-name:var(--font-inter)] text-[10px] text-white/30 uppercase tracking-wider mb-1">
-            Last seen
-          </p>
-          <p className="font-[family-name:var(--font-inter)] text-xs text-white/50">
+          <dt className="plate mb-1">last seen</dt>
+          <dd className="readout text-sm text-phosphor/80">
             {lastSeen ? lastSeen.toLocaleTimeString() : '—'}
-          </p>
+          </dd>
         </div>
-      </div>
+      </dl>
     </a>
   );
 }
 
 export default async function DevicesPage() {
   const result = await fetchDevices();
+  const count = result.ok ? result.data.length : 0;
 
   return (
     <PageShell
-      title="Device Fleet"
-      subtitle="Every vending node. Source label is authoritative — badge means a real ESP32-C3 is attached."
+      title="Device fleet"
+      subtitle="Every vending node. The provenance stamp is authoritative: badge means a real ESP32-C3 is attached."
+      stamp={result.ok ? `${count} online` : 'no link'}
     >
       {!result.ok ? (
-        <RelayOffline endpoint="http://localhost:3402/api/devices" reason={result.reason} />
+        <RelayOffline path="/api/devices" reason={result.reason} />
       ) : result.data.length === 0 ? (
-        <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-12 text-center">
-          <Wifi size={24} className="text-white/20 mx-auto mb-3" aria-hidden="true" />
-          <p className="font-[family-name:var(--font-inter)] text-sm text-white/40">
-            No devices registered yet. Run the relay-proxy to register a device.
+        <Panel label="Fleet">
+          <p className="readout px-4 py-12 text-center text-sm text-phosphor-dim">
+            No devices registered. Start relay-proxy to register one.
           </p>
-        </div>
+        </Panel>
       ) : (
-        <div className="flex flex-col gap-3">
-          <div className="flex items-center justify-between mb-2">
-            <p className="font-[family-name:var(--font-inter)] text-xs text-white/40">
-              {result.data.length} device{result.data.length !== 1 ? 's' : ''}
-            </p>
-            <div className="flex items-center gap-3">
-              <SourceBadge source="badge" />
-              <span className="font-[family-name:var(--font-inter)] text-[10px] text-white/30">
-                =&nbsp;real hardware
-              </span>
-              <SourceBadge source="simulator" />
-              <span className="font-[family-name:var(--font-inter)] text-[10px] text-white/30">
-                =&nbsp;software mock
-              </span>
-            </div>
-          </div>
-          {result.data.map((d) => (
-            <DeviceCard key={d.id} device={d} />
-          ))}
-        </div>
+        <Panel label="Fleet" live stamp={
+          <span className="flex items-center gap-3">
+            <SourceBadge source="badge" />
+            <span className="normal-case tracking-normal">= real hardware</span>
+            <SourceBadge source="simulator" />
+            <span className="normal-case tracking-normal">= software mock</span>
+          </span>
+        }>
+          {result.data.map((d) => <DeviceRow key={d.id} device={d} />)}
+        </Panel>
       )}
     </PageShell>
   );

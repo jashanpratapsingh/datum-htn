@@ -1,31 +1,37 @@
+import { RELAY_URL } from '@/lib/relay';
+
 interface Props {
-  endpoint: string;
+  /** Path only, e.g. `/api/devices`. The host comes from NEXT_PUBLIC_RELAY_URL. */
+  path: string;
   reason?: 'offline' | 'unimplemented' | 'not_found' | 'error';
 }
 
-export function RelayOffline({ endpoint, reason = 'offline' }: Props) {
-  const label =
+/**
+ * The empty state when the relay cannot be reached.
+ *
+ * Previously every call site hardcoded `http://localhost:3402/...` here, so in
+ * production the page told you to check a URL that was not the one it had
+ * actually tried. It now reads the same base URL the fetch helper used.
+ */
+export function RelayOffline({ path, reason = 'offline' }: Props) {
+  const endpoint = `${RELAY_URL}${path}`;
+  const heading =
     reason === 'unimplemented'
-      ? 'Endpoint not yet implemented'
+      ? 'Endpoint not implemented yet'
       : reason === 'offline'
-        ? 'Relay offline'
+        ? 'No relay link'
         : 'Data unavailable';
-
   const hint =
     reason === 'unimplemented'
-      ? `The relay is up but ${endpoint} is not implemented yet — backend session is working on it.`
-      : `Start relay-proxy to see live data from ${endpoint}`;
+      ? 'The relay answered, but does not serve this path yet.'
+      : 'Start relay-proxy, then reload this page.';
 
   return (
-    <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-12 text-center">
-      <p className="font-[family-name:var(--font-inter)] text-xs text-white/30 uppercase tracking-wider mb-2">
-        {label}
-      </p>
-      <p className="font-[family-name:var(--font-inter)] text-sm text-white/50 mb-1">{hint}</p>
-      <p className="font-[family-name:var(--font-inter)] font-mono text-xs text-[#5ed29c]/60 mt-3">
-        {endpoint}
-      </p>
-      <p className="font-[family-name:var(--font-inter)] text-xs text-white/20 mt-4">
+    <div className="panel px-6 py-12 text-center">
+      <p className="plate mb-3">{heading}</p>
+      <p className="text-[15px] text-phosphor/80">{hint}</p>
+      <p className="readout mt-4 text-xs text-phosphor-dim">{endpoint}</p>
+      <p className="readout mt-5 text-xs text-phosphor-dim/70">
         cd relay-proxy &amp;&amp; npm start
       </p>
     </div>

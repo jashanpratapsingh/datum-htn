@@ -1,135 +1,94 @@
 import PageShell from '@/components/PageShell';
+import { Panel, Readout } from '@/components/Panel';
 import { RelayOffline } from '@/components/RelayOffline';
 import { fetchLedger } from '@/lib/relay';
-import { ExternalLink } from 'lucide-react';
 
-function solscanUrl(sig: string): string {
-  return `https://solscan.io/tx/${sig}?cluster=devnet`;
-}
+const solscan = (sig: string) => `https://solscan.io/tx/${sig}?cluster=devnet`;
 
-function CompressionComparison() {
-  const ratio = 48 / 0.05;
-
+function RentArgument() {
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex flex-col md:flex-row gap-4">
-        {/* Standard cost */}
-        <div className="flex-1 rounded-xl border border-red-500/15 bg-red-500/[0.04] px-5 py-5">
-          <p className="font-[family-name:var(--font-inter)] text-[10px] text-white/30 mb-2">
-            Standard Solana accounts — 10,000 records
-          </p>
-          <p className="font-[family-name:var(--font-instrument)] text-4xl text-red-400">$48.00</p>
-          <p className="font-[family-name:var(--font-inter)] text-xs text-white/30 mt-1">state rent</p>
-        </div>
-        {/* ZK compressed cost */}
-        <div className="flex-1 rounded-xl border border-[#5ed29c]/20 bg-[#5ed29c]/[0.04] px-5 py-5">
-          <p className="font-[family-name:var(--font-inter)] text-[10px] text-white/30 mb-2">
-            ZK-compressed via Light Protocol — same 10,000 records
-          </p>
-          <p className="font-[family-name:var(--font-instrument)] text-4xl text-[#5ed29c]">$0.05</p>
-          <p className="font-[family-name:var(--font-inter)] text-xs text-white/30 mt-1">state rent</p>
+    <Panel label="The rent argument" stamp="10 000 records">
+      <div className="grid grid-cols-1 md:grid-cols-2">
+        <Readout label="standard Solana accounts" value="48.00" unit="USDC rent" tone="alarm" size="lg" />
+        <div className="panel-divide md:panel-divide-x md:border-t-0">
+          <Readout label="ZK-compressed via Light Protocol" value="0.05" unit="USDC rent" tone="amber" size="lg" />
         </div>
       </div>
-      <div className="flex items-center gap-3">
-        <span className="font-[family-name:var(--font-instrument)] text-3xl text-white">{ratio.toFixed(0)}×</span>
-        <span className="font-[family-name:var(--font-inter)] text-sm text-white/40">cheaper. That is the reason this project exists.</span>
-      </div>
-    </div>
+      <p className="panel-divide px-4 py-3.5 text-[15px] text-phosphor/85">
+        <span className="readout text-phosphor">960×</span> cheaper. Thousands of readings a day per device
+        is only viable if storing them costs nearly nothing — that is the reason this project exists.
+      </p>
+    </Panel>
   );
 }
 
 export default async function LedgerPage() {
   const result = await fetchLedger();
+  const entries = result.ok ? result.data : [];
+  const total = entries.reduce((s, e) => s + Number(e.amount), 0) / 1e6;
 
   return (
     <PageShell
-      title="On-chain Ledger"
-      subtitle="Settled payments linked to Solscan devnet. ZK-compressed batches make this economically viable."
+      title="On-chain ledger"
+      subtitle="Every settled payment, linked to Solscan devnet. Printed the way a receipt is."
+      stamp={result.ok ? `${entries.length} settled` : 'no link'}
     >
-      <div className="flex flex-col gap-10">
-        {/* Compression argument */}
-        <div className="flex flex-col gap-4">
-          <h2 className="font-[family-name:var(--font-inter)] text-sm font-semibold text-white/40">
-            The rent argument
-          </h2>
-          <p className="font-[family-name:var(--font-inter)] text-sm text-white/50 max-w-2xl">
-            Telemetry at IoT scale means thousands of records per device per day. Standard Solana
-            accounts make this cost-prohibitive. Light Protocol ZK compression changes the economics.
-          </p>
-          <CompressionComparison />
-        </div>
+      <div className="flex flex-col gap-5">
+        <RentArgument />
 
-        {/* Settlement list */}
-        <div className="flex flex-col gap-4">
-          <h2 className="font-[family-name:var(--font-inter)] text-sm font-semibold text-white/40">
-            Settled transactions
-          </h2>
-
-          {!result.ok ? (
-            <RelayOffline endpoint="http://localhost:3402/api/ledger" reason={result.reason} />
-          ) : result.data.length === 0 ? (
-            <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-12 text-center">
-              <p className="font-[family-name:var(--font-inter)] text-sm text-white/30">
-                No settlements yet — run{' '}
-                <code className="text-[#5ed29c] text-xs">npm run demo</code> to generate
-                on-chain activity.
-              </p>
+        {!result.ok ? (
+          <RelayOffline path="/api/ledger" reason={result.reason} />
+        ) : entries.length === 0 ? (
+          <Panel label="Settled">
+            <p className="readout px-4 py-12 text-center text-sm text-phosphor-dim">
+              Nothing settled yet. Run <span className="text-phosphor">npm run demo</span> to settle a payment.
+            </p>
+          </Panel>
+        ) : (
+          /* The second material. A receipt is paper — light, printed, torn off the roll. */
+          <div className="paper paper-tear mx-auto w-full max-w-2xl px-6 pb-8 pt-6 sm:px-8">
+            <div className="readout mb-1 text-center text-[11px] uppercase tracking-[0.22em] text-ink-fade">
+              VENDX · solana devnet · settlement receipt
             </div>
-          ) : (
-            <div className="flex flex-col gap-3">
-              <div className="rounded-xl border border-[#5ed29c]/15 bg-[#5ed29c]/[0.03] px-5 py-4">
-                <p className="font-[family-name:var(--font-inter)] text-[10px] text-white/30 mb-1">Total settled</p>
-                <p className="font-[family-name:var(--font-instrument)] text-3xl text-[#5ed29c]">
-                  ${(result.data.reduce((s, e) => s + Number(e.amount), 0) / 1_000_000).toFixed(4)}
-                </p>
-              </div>
+            <div className="readout mb-5 border-b border-dashed border-ink-fade/50 pb-4 text-center text-[11px] text-ink-fade">
+              {new Date().toISOString().slice(0, 19).replace('T', '  ')}
+            </div>
 
-              <ul className="flex flex-col gap-2">
-                {result.data.map((entry) => (
-                  <li
-                    key={entry.nonce}
-                    className="flex flex-col md:flex-row md:items-center gap-2 md:gap-4 rounded-xl border border-white/10 bg-white/[0.02] px-5 py-3"
-                  >
-                    <div className="flex flex-col gap-0.5 flex-1 min-w-0">
-                      <p className="font-[family-name:var(--font-inter)] font-mono text-xs text-white/60 truncate">
-                        {entry.signature}
-                      </p>
-                      <p className="font-[family-name:var(--font-inter)] font-mono text-[10px] text-white/30">
-                        nonce: {entry.nonce.slice(0, 16)}…
-                      </p>
-                    </div>
-
-                    <div className="flex items-center gap-4 shrink-0">
-                      <div className="text-right">
-                        <p className="font-[family-name:var(--font-inter)] text-[10px] text-white/30">
-                          {entry.network}
-                        </p>
-                        <p className="font-[family-name:var(--font-inter)] font-bold text-sm text-[#5ed29c]">
-                          ${(Number(entry.amount) / 1_000_000).toFixed(6)}
-                        </p>
-                      </div>
-
-                      <p className="font-[family-name:var(--font-inter)] font-mono text-[10px] text-white/30">
-                        {new Date(entry.issuedAt * 1000).toLocaleTimeString()}
-                      </p>
-
+            <ol className="readout text-[13px]">
+              {entries.map((e) => (
+                <li key={e.nonce} className="border-b border-dotted border-ink-fade/40 py-2.5">
+                  <div className="flex justify-between gap-4">
+                    <span className="truncate text-ink">{e.signature}</span>
+                    <span className="shrink-0 tabular-nums text-ink">{(Number(e.amount) / 1e6).toFixed(6)}</span>
+                  </div>
+                  <div className="mt-0.5 flex justify-between gap-4 text-[11px] text-ink-fade">
+                    <span>{e.network} · nonce {e.nonce.slice(0, 12)}…</span>
+                    <span className="flex items-center gap-3">
+                      {new Date(e.issuedAt * 1000).toLocaleTimeString()}
                       <a
-                        href={solscanUrl(entry.signature)}
+                        href={solscan(e.signature)}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="flex items-center gap-1 text-[#5ed29c] hover:text-[#4ec08a] transition-colors text-xs font-[family-name:var(--font-inter)]"
-                        aria-label={`View transaction ${entry.signature.slice(0, 8)}… on Solscan`}
+                        aria-label={`View transaction ${e.signature.slice(0, 8)}… on Solscan`}
+                        className="text-ink underline underline-offset-2 hover:text-ink-fade"
                       >
-                        Solscan
-                        <ExternalLink size={10} aria-hidden="true" />
+                        solscan
                       </a>
-                    </div>
-                  </li>
-                ))}
-              </ul>
+                    </span>
+                  </div>
+                </li>
+              ))}
+            </ol>
+
+            <div className="readout mt-4 flex justify-between border-t-2 border-ink pt-3 text-[15px] font-semibold text-ink">
+              <span>TOTAL</span>
+              <span className="tabular-nums">{total.toFixed(6)} USDC</span>
             </div>
-          )}
-        </div>
+            <div className="readout mt-6 text-center text-[11px] text-ink-fade">
+              thank you for your data
+            </div>
+          </div>
+        )}
       </div>
     </PageShell>
   );

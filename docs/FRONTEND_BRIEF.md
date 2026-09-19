@@ -87,3 +87,91 @@ dropped: visible focus rings on every interactive element, the mobile menu
 traps focus and closes on Escape, the video is `muted`/`playsinline` and is
 skipped under `prefers-reduced-motion`, and all text clears 4.5:1 against its
 backdrop — check the description at 70% white specifically.
+
+---
+
+## 5. Redesign — the vend panel (2026-09-19)
+
+The first build shipped the generic identity: near-black `#070b0a` with one acid
+accent `#5ed29c`. That exact pairing is one of the commonest tells of a
+generated page, and it looked like every other crypto dashboard. This pass
+replaces it, keeping the Mainframe hero mechanics and every data path intact.
+
+### Grounding
+
+VENDX is a vending machine for data. The visual language comes from that world
+— vacuum-fluorescent cash-register readouts behind smoked glass, and the
+dot-matrix receipt a transaction prints — not from "dark developer dashboard".
+
+### The one rule
+
+**Every surface is glass or paper.** Glass is dark and emits light (devices,
+terminals, the hero). Paper is light and absorbs it (the ledger, the docs
+index). There is no third surface. This material contrast is what stops the
+design collapsing back into "dark theme with an accent".
+
+### Tokens (`web/app/globals.css`)
+
+| Token | Hex | Role |
+| --- | --- | --- |
+| `glass` | `#071014` | Smoked VFD glass — blue-green cast, not a neutral tinted black |
+| `phosphor` | `#7ff3e0` | VFD cyan-green, the primary readout |
+| `amber` | `#ffb642` | **Money only.** Prices, balances, settled totals. Nothing else |
+| `alarm` | `#ff6b5a` | Denials, failures, over-cap |
+| `paper` / `ink` | `#e6e1d3` / `#1a1512` | Receipt stock and dot-matrix ink |
+| `rule` | `#1d3a3a` | Hairline divisions on glass |
+
+`#5ed29c` is retired.
+
+### Type
+
+IBM Plex Sans Condensed (panel lettering, headings) and IBM Plex Mono (the
+readout voice — typewriter line, all numerals, protocol dumps). One superfamily,
+two clearly distinct roles, chosen because IBM *is* the mainframe. Both free
+under the OFL and self-hosted via `next/font`. All numerals are tabular.
+
+Not the brief's `onlinewebfonts.com` Helvetica Now URLs: that site re-hosts a
+commercial Monotype face under a CC BY 4.0 claim that is almost certainly
+invalid.
+
+### Primitives
+
+- `.panel` — one readout behind a bezel. Divided internally by `.panel-divide`
+  hairlines, never by nesting more panels.
+- `.readout` — tabular mono for every number.
+- `.plate` — stamped machine lettering. The only place all-caps is allowed.
+- `.paper` / `.paper-tear` — the receipt surface.
+- `.bloom` / `.bloom-amber` — phosphor glow, live readouts only.
+- `.scanlines` — hero video and live panels only. A page-wide CRT filter is
+  costume, not design.
+
+### Mainframe mechanics, as built
+
+Scrub video on `mousemove` with an `onSeeked` re-queue to prevent seek flooding
+(`ScrubVideo.tsx`); blurred two-line intro; `useTypewriter` at 38ms/char after
+600ms with a blinking cursor; four solid pills and one copy-to-clipboard outline
+pill, rising 400ms after load independent of the typing (`Pill.tsx`);
+`VENDX(R)` + `✳︎` wordmark; hamburger to full overlay.
+
+Two deliberate departures from the Mainframe spec:
+
+- **The overlay is conditionally mounted, not faded with opacity.** An
+  opacity-0 overlay is still hit-testable, still "visible" to assistive tech,
+  and fails the focus-trap route test. Following the spec literally ships a bug.
+- **Touch and reduced-motion hold a frame** instead of scrubbing, because
+  pointer-driven scrubbing is meaningless without a pointer.
+
+### What was removed
+
+Five landing-page sections that were permanently-empty stubs duplicating
+working pages: `PaymentHandshake`, `PolicyGauge`, `CompressionSavings`,
+`Explorer`, `Sparkline`. Six copy-pasted `loading.tsx` shells, replaced by one
+`Skeleton.tsx`. The dead `#demo` anchor. The `→` on buttons and the green period
+on the headline — both named tells.
+
+### Fixed in passing
+
+`RelayOffline` hardcoded `http://localhost:3402/...` at every call site and
+never read `NEXT_PUBLIC_RELAY_URL`, so in production the empty state pointed
+at a URL the page had not actually tried. It now reads the same base URL the
+fetch helper uses.

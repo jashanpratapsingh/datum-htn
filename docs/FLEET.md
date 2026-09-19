@@ -46,6 +46,16 @@ hard iteration cap (`VENDX_MAX_ITERS`, default 12) behind that.
 confidently calling a function that does not exist. Sessions are told to read
 the `.d.ts` in `node_modules` rather than guess.
 
+**Test the join, not just the halves.** Round two shipped a frontend typed
+against bare arrays and a backend returning wrapped objects with different
+field names — and every Playwright run happened with the relay down, so each
+page only ever proved its empty state. Three routes crashed the moment the
+relay was actually running. Two sessions each did their job correctly and the
+product was still broken, because nothing exercised the contract between them.
+`web/tests/relay-up.spec.ts` now runs against a live relay and skips (not
+passes) when there isn't one. Any time two sessions own the two ends of an
+interface, the integrate session must run something that crosses it.
+
 ## Watching it
 
 `STATUS.md` is the ground truth, not the terminal scrollback:

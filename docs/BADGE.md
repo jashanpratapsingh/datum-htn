@@ -169,6 +169,21 @@ paid request if the console wedges.
 This still satisfies the brief's architecture: it explicitly permits verifying
 "via a lightweight validation proxy".
 
+### Serial never sits in the request path
+
+A full console read takes 6–10s on a healthy badge and ~45s on one whose
+`/dev` node exists but whose chip is asleep — the node survives a power-down,
+so "is the device file there" says nothing about whether the badge will answer.
+Pages fetch with a 5s timeout. The first version of `badge-source.ts` awaited
+serial inside the request and stalled every device endpoint for 45s the moment
+the badge dozed.
+
+It now keeps a last-known reading, refreshes it on a background loop, and backs
+off a badge that fails to answer for 60s. `readBadge()` returns immediately.
+Provenance stays honest: the payload carries `readAt`, `ageSeconds` and
+`badgeState` (`ok` / `unresponsive` / `absent`), and before the first good read
+it is plainly the simulator. `/api/devices` answers in ~3ms with a dead badge.
+
 ## Privacy
 
 `/littlefs/identity.json` holds the attendee's name, email, phone, LinkedIn,
