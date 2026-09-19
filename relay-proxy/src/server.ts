@@ -1,5 +1,6 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
-import { buildDeviceChallenge, verifyDeviceReceipt, makeTelemetry } from './simulator.js';
+import { buildDeviceChallenge, verifyDeviceReceipt } from './simulator.js';
+import { readBadge, badgeAttached } from './badge-source.js';
 import { settle, type SettleRequest } from './facilitator.js';
 
 export const DEFAULT_PORT = 3402;
@@ -42,7 +43,7 @@ export function createRelayServer(port = DEFAULT_PORT) {
       }
 
       res.setHeader('Access-Control-Allow-Origin', '*');
-      return json(res, 200, makeTelemetry());
+      return json(res, 200, await readBadge());
     }
 
     // POST /settle — facilitator endpoint

@@ -44,3 +44,6 @@ Rules for fleet sessions — see [FLEET.md](FLEET.md):
 [2026-09-19T16:50:00Z] backend IDLE — npm run build green in agent-buyer and relay-proxy; 402→pay→receipt→200 arc confirmed in simulator; no open tasks
 [2026-09-19T16:55:00Z] integrate DONE e2e — npm run demo green (402→pay→receipt→200 SIM); 2 commits on feat/vendx-architecture-gamma; relay-proxy TS dist built; supabase/migrations/0001_nonces.sql; .gitignore: keys/ data/ excluded; package.json demo builds relay-proxy before running
 [2026-09-19T16:55:00Z] integrate IDLE git — demo arc green, all sessions committed, no open tasks
+[2026-09-19T17:20:00Z] orchestrator DONE hardware — real ESP32-C3 HTN badge analysed read-only (no reflash, no erase); scripts/badge.py bridge; relay now sells REAL badge telemetry (source=badge); docs/BADGE.md
+[2026-09-19T17:20:00Z] orchestrator BLOCKED badge-app — .lua side-load blocked by firmware guard (verified: 720B a.bin persists, byte-identical b.lua zeroed). badge-app/vendx written + ready; needs admin unlock or share path.
+[2026-09-19T17:20:00Z] orchestrator DONE toolchain — rustup stable 1.83 -> 1.98.1, unblocks anchor build for backend
