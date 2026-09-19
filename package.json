@@ -8,7 +8,12 @@
   "scripts": {
     "build": "npm run build --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test -w @vendx/protocol && npm run test -w @vendx/relay-proxy && npm run test -w @vendx/agent-buyer",
     "demo": "npm run build -w @vendx/relay-proxy && node scripts/demo.mjs",
+    "demo:solana": "npm run build && node scripts/demo-solana.mjs",
+    "keygen": "npm run build -w @vendx/protocol && node scripts/keygen.mjs",
+    "allowance": "npm run build -w @vendx/agent-buyer && npm run allowance -w @vendx/agent-buyer --",
+    "sense": "npm run build -w @vendx/relay-proxy && npm run sense -w @vendx/relay-proxy",
     "fleet": "./scripts/fleet.sh"
   }
 }

@@ -8,9 +8,14 @@
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "start": "node dist/index.js",
-    "test": "tsc -p tsconfig.json && node --test dist/server.test.js"
+    "node": "node dist/node.js",
+    "facilitator": "node dist/facilitator-server.js",
+    "sense": "node dist/bin/sense-once.js",
+    "test": "tsc -p tsconfig.json && node --test \"dist/**/*.test.js\""
   },
   "dependencies": {
+    "@solana/spl-token": "^0.4.9",
+    "@solana/web3.js": "^1.99.0",
     "@vendx/protocol": "*",
     "tweetnacl": "^1.0.3"
   },
