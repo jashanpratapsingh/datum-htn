@@ -1,6 +1,6 @@
 import PageShell from '@/components/PageShell';
 
-const REPO = 'https://github.com/jashanpratapsingh/datum-htn/blob/feat/vendx-architecture-gamma';
+const REPO = 'https://github.com/jashanpratapsingh/vendx-htn/blob/feat/vendx-architecture-gamma';
 
 const DOCS = [
   { title: 'Architecture', path: 'docs/ARCHITECTURE.md', desc: 'System map, the seven surfaces, the handshake, the trust model.' },
