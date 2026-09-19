@@ -1,5 +1,10 @@
 [toolchain]
 anchor_version = "0.30.1"
+# Build with: anchor build --no-idl
+# anchor-syn 0.30.1 calls proc_macro2::Span::source_file() during IDL generation,
+# which is a nightly-only API removed in nightly ≥1.100. The program itself
+# compiles fine with stable (1.89+). IDL generation can be re-enabled once
+# anchor-syn is updated or a pinned nightly-2024-xx-xx is added to rust-toolchain.toml.
 
 [features]
 resolution = true

@@ -4,10 +4,13 @@ import { useEffect, useRef, useState } from 'react';
 import { Menu, X } from 'lucide-react';
 
 const NAV_LINKS = [
-  { label: 'PROTOCOL', href: '#protocol' },
-  { label: 'DEVICES', href: '#devices' },
-  { label: 'DOCS', href: '#docs' },
-  { label: 'LEDGER', href: '#ledger' },
+  { label: 'Devices', href: '/devices' },
+  { label: 'Marketplace', href: '/marketplace' },
+  { label: 'Agent', href: '/agent' },
+  { label: 'Policy', href: '/policy' },
+  { label: 'Ledger', href: '/ledger' },
+  { label: 'Protocol', href: '/protocol' },
+  { label: 'Docs', href: '/docs' },
 ];
 
 export default function NavBar() {

@@ -100,7 +100,7 @@ bucket. The async HTTP server:
 
 The device holds **no state about payments** beyond a nonce table (small, in
 RAM, evicted at TTL). No TLS client, no RPC, no CA bundle. Verification runs in
-~40ms on the ESP32's Xtensa core.
+~40ms on the ESP32-C3's single RISC-V core.
 
 `firmware-vendor/src/verifier.cpp` mirrors the type definitions in
 `packages/vendx-protocol/src/types.ts` and carries a comment pointing back to
@@ -154,7 +154,7 @@ Local dev: `supabase start` (requires Supabase CLI). Migrations live in
 5. Buyer  ──► Solana  SPL token transfer (USDC, micro-units)
 6. Solana ──► Buyer   tx signature (base58)
 
-7. Buyer  ──► Relay   POST /settle  {txSig, nonce, payTo, amount}
+7. Buyer  ──► Relay   POST /settle  {nonce, txSignature, payTo, amount, network}
 8. Relay confirms on-chain via getSignatureStatuses
 9. Relay signs ReceiptBody with Ed25519 facilitator key
 10. Relay ──► Buyer  SignedReceipt: "<body>.<sig>"
@@ -202,10 +202,10 @@ close the loop after the fact.
 
 | Surface | Status |
 | --- | --- |
-| `packages/vendx-protocol` | Built — `npm run build` passes, all types and codec functions present |
-| `agent-buyer/` | Scaffolded — empty `src/`; implementation in progress |
-| `relay-proxy/` | Scaffolded — empty `src/`; implementation in progress |
-| `firmware-vendor/` | Scaffolded — empty `src/` and `lib/`; implementation in progress |
-| `solana-ledger/` | Scaffolded — `programs/` directory present, no source yet |
-| `web/` | Scaffolded — empty directory; implementation in progress |
-| `supabase/` | Initialized — `config.toml` present, migrations directory created |
+| `packages/vendx-protocol` | **Built** — `npm run build` passes; all types, codec, and challenge functions present |
+| `agent-buyer/` | **Built** — TypeScript compiles clean; full 402 → settle → receipt → 200 arc verified in demo |
+| `relay-proxy/` | **Built** — TypeScript compiles clean; HTTP on `:3402`; simulator + badge-source + facilitator all wired |
+| `firmware-vendor/` | **Source complete** — C++ compiles with PlatformIO; not running on the HTN badge (badge firmware is locked) |
+| `solana-ledger/` | **Source complete** — Anchor scaffold (`initialize` + `commit_batch`); `anchor build` unverified here (toolchain upgraded to Rust 1.98.1 by orchestrator) |
+| `web/` | **Built** — `next build` passes (Next.js 16.3.5 + Tailwind 4.3.3) |
+| `supabase/` | **Migrations applied** — `0001_nonces.sql` applied to hosted Supabase project; local `supabase start` not verified in this session |

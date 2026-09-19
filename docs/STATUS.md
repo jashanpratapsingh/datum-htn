@@ -47,3 +47,21 @@ Rules for fleet sessions — see [FLEET.md](FLEET.md):
 [2026-09-19T17:20:00Z] orchestrator DONE hardware — real ESP32-C3 HTN badge analysed read-only (no reflash, no erase); scripts/badge.py bridge; relay now sells REAL badge telemetry (source=badge); docs/BADGE.md
 [2026-09-19T17:20:00Z] orchestrator BLOCKED badge-app — .lua side-load blocked by firmware guard (verified: 720B a.bin persists, byte-identical b.lua zeroed). badge-app/vendx written + ready; needs admin unlock or share path.
 [2026-09-19T17:20:00Z] orchestrator DONE toolchain — rustup stable 1.83 -> 1.98.1, unblocks anchor build for backend
+[2026-09-19T17:25:00Z] orchestrator DONE docs — docs/FEATURES.md: 9 routes planned for the product beyond the hero
+[2026-09-19T17:25:00Z] orchestrator CLAIM none — relaunching fleet for feature pages + anchor build (rust now 1.98.1)
+[2026-09-19T17:30:00Z] backend CLAIM solana-ledger/ — anchor build with Rust 1.98.1 (prev blocker was Rust <1.85); fix or document
+[2026-09-19T17:30:00Z] backend CLAIM relay-proxy/ — add GET /api/devices, /api/devices/:id, /api/sales, /api/policy, /api/ledger endpoints
+[2026-09-19T17:30:00Z] integrate CLAIM supabase — applying migrations/0001_nonces.sql to Datum-htn (dhjhsupqdmcdyqghxace)
+[2026-09-19T17:31:00Z] integrate DONE supabase — 0001_nonces.sql applied to Datum-htn (dhjhsupqdmcdyqghxace)
+[2026-09-19T17:31:00Z] integrate CLAIM vercel — deploying web/ to Vercel as jashanpratapsingh
+[2026-09-19T17:35:00Z] research CLAIM docs/ — ARCHITECTURE.md: fix Xtensa→RISC-V, txSig→txSignature, stale build table; RUNBOOK.md: fix port 3001→3402, stale demo/build status; write docs/API.md
+[2026-09-19T17:45:00Z] research DONE docs/ — ARCHITECTURE.md: "Xtensa"→"RISC-V", POST /settle field txSig→txSignature+network, build table updated to reflect all surfaces built; RUNBOOK.md: port 3001→3402, demo arc updated (green), build section updated; docs/API.md written (3 routes: GET /api/telemetry, POST /settle, GET /health — all verified against server.ts/facilitator.ts/badge-source.ts/simulator.ts)
+[2026-09-19T17:45:00Z] research BLOCKED firmware-vendor/ backend — firmware-vendor/src/main.cpp lines 7-9 comment says "core 0 NimBLE … core 1 AsyncWebServer"; ESP32-C3 is single-core RISC-V — should say "single-core, time-sliced". Backend session owns that file.
+[2026-09-19T17:45:00Z] research IDLE docs/ — all claims verified against source; three drift fixes applied; API.md written; no open tasks
+[2026-09-19T17:50:00Z] frontend CLAIM web/ — building all 8 feature routes: /devices /devices/[id] /marketplace /agent /policy /ledger /protocol /docs; relay fetch with graceful empty states; SVG sparklines; agent console live handshake
+[2026-09-19T17:55:00Z] backend DONE solana-ledger/ — anchor build --no-idl passes; vendx_zk.so (197KB) in target/deploy/; added idl-build feature to Cargo.toml; IDL step blocked on anchor-syn 0.30.1 using proc_macro2::Span::source_file() removed in nightly≥1.100 — documented in Anchor.toml comment; program logic correct
+[2026-09-19T17:55:00Z] backend DONE relay-proxy/ — 5 new REST endpoints: GET /api/devices, GET /api/devices/:id, GET /api/sales, GET /api/policy, GET /api/ledger; sales-log.ts added (in-memory store, recorded at /settle); policy reads data/spend-ledger.json; CORS headers on all responses; npm run build -w @vendx/relay-proxy passes clean
+[2026-09-19T17:55:00Z] backend IDLE — both builds green; all tasks complete
+[2026-09-19T18:05:00Z] frontend DONE web/ — npm run build passes (12 routes, 0 TS errors); /devices /devices/[id] /marketplace /agent /policy /ledger /protocol /docs all render; relay fetch with offline/unimplemented empty states; SVG sparklines; source=badge|simulator badge on every row; agent console runs live 402→settle→200 arc in browser; NavBar updated to page links
+[2026-09-19T18:05:00Z] frontend IDLE web/ — build green, no open tasks
+[2026-09-19T17:45:00Z] integrate DONE vercel — web/ deployed; https://web-rouge-six-46.vercel.app

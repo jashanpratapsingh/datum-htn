@@ -41,36 +41,35 @@ npm run build        # builds packages/vendx-protocol (other services: in progre
 npm run typecheck    # type-check all workspaces
 ```
 
-`packages/vendx-protocol` (`@vendx/protocol`) is the only package with a
-completed build. The other workspaces (`agent-buyer`, `relay-proxy`, `web`) will
-build as their `src/` directories are populated.
+`packages/vendx-protocol` (`@vendx/protocol`), `agent-buyer`, `relay-proxy`,
+and `web` all build cleanly. See [docs/ARCHITECTURE.md](ARCHITECTURE.md) for the
+full build status table.
 
 ## Demo arc
-
-> **Status:** `scripts/demo.mjs` does not exist yet — it will be written by
-> the `backend` and `integrate` sessions. This section documents the intended
-> invocation.
 
 ```bash
 npm run demo
 ```
 
 The demo runs:
-1. `relay-proxy` in simulator mode (fake ESP32, no hardware)
+1. `relay-proxy` in simulator mode (fake ESP32, no hardware required)
 2. `agent-buyer` against the simulator
 3. Full 402 → settle → verify → 200 arc, logged to stdout
-4. On-chain receipt sampling logged to stdout
 
-Expected output (once built):
+Expected output:
 ```
-[relay]  listening on :3001
-[device] issued nonce abc123… (TTL 300s)
-[buyer]  got 402 — price 10000 µUSDC, within $5.00/day cap
-[buyer]  sending USDC transfer…
-[relay]  confirmed tx 5j7s… on solana-devnet
-[relay]  signed receipt (~378B)
-[device] verified receipt in 41ms — nonce burned
-[device] 200 OK — 42 BLE macs, 5-min bucket
+[relay-proxy] facilitator pubkey loaded
+[relay-proxy] listening on :3402
+[agent-buyer] wallet: <addr>…
+[agent-buyer] daily budget remaining: $5.0000
+[agent-buyer] → GET http://localhost:3402/api/telemetry
+[agent-buyer] ← 402  nonce=<hex>…
+[agent-buyer] ✓ policy  amount=100 µUSDC  to=FHcgXc3Y…
+[agent-buyer] → execute  txSig=<sig>… (simulator)
+[agent-buyer] → POST http://localhost:3402/settle
+[agent-buyer] ← receipt  <body>.<sig>…
+[agent-buyer] → GET http://localhost:3402/api/telemetry  (with receipt)
+[agent-buyer] ← 200 OK — telemetry: { source: 'simulator', … }
 ```
 
 ## Build fleet
