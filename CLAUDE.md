@@ -60,7 +60,21 @@ happens on `feat/vendx-architecture-gamma`, never directly on `main`.
 
 ## Honesty about what runs
 
-No ESP32 hardware is attached to this machine. Firmware is compile-verified
-only; the demo runs against the simulator in `relay-proxy`. Say which one a
-result came from. Never report a deploy, a test pass or an on-chain settlement
-that did not actually happen.
+A real **Hack the North ESP32-C3 badge** is attached at `/dev/cu.usbmodem101`.
+`relay-proxy` reads genuine telemetry from it over the serial console, so the
+demo returns `source: "badge"` when it is plugged in and `source: "simulator"`
+when it is not. Every payload carries that field — always surface it, and never
+present a simulated reading as hardware.
+
+Read `docs/BADGE.md` before touching the badge. Two hard rules:
+
+- **Never reflash or erase it.** No `write_flash`, no `erase_flash`, no
+  `pio run -t upload` against it. Read-only probing only; it is the user's
+  conference badge and the factory firmware must survive.
+- **Never read `identity.json` or `solana.json` into anything.** They hold
+  personal contact details and a plaintext Solana private key. They are not
+  telemetry, they are not test fixtures, and they never get committed.
+
+`firmware-vendor/` is our own ESP32 firmware and is compile-only — it is not
+what runs on the badge. Never report a deploy, a test pass or an on-chain
+settlement that did not actually happen.

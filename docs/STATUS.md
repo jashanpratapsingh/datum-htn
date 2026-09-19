@@ -67,3 +67,6 @@ Rules for fleet sessions — see [FLEET.md](FLEET.md):
 [2026-09-19T17:45:00Z] integrate DONE vercel — web/ deployed; https://web-rouge-six-46.vercel.app
 [2026-09-19T17:50:00Z] integrate DONE git — commit 89f0dc4 on feat/vendx-architecture-gamma; 33 files, all ROUND 2 sessions captured
 [2026-09-19T17:50:00Z] integrate IDLE — supabase migrated, web deployed (https://web-rouge-six-46.vercel.app), commit done; no open tasks
+[2026-09-19T18:15:00Z] orchestrator DONE firmware-vendor/ — resolved research BLOCKED: main.cpp concurrency comment now states ESP32-C3 is single-core RISC-V, scan/server time-sliced
+[2026-09-19T18:15:00Z] orchestrator DONE CLAUDE.md — corrected stale "no hardware attached" claim; added never-reflash and never-read-identity/solana rules
+[2026-09-19T18:15:00Z] orchestrator DONE verify — deploy checked independently: / /devices /agent /protocol all 200; VENDX re-skin live; HLS wired with enableWorker:false

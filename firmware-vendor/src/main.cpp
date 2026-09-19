@@ -4,8 +4,10 @@
  * Sells BLE foot-traffic telemetry to AI agents over x402. See docs/PROTOCOL.md.
  *
  * Concurrency shape (this matters — see docs/ARCHITECTURE.md):
- *   core 0  NimBLE passive scan, duty-cycled so it never starves WiFi
- *   core 1  AsyncWebServer
+ *   The attached Hack the North badge is an ESP32-C3: a SINGLE-core RISC-V
+ *   part at 160MHz. There is no second core to hide the BLE scan on, so the
+ *   scan and the server are time-sliced on one core and the scan must be
+ *   duty-cycled (window < interval) or it starves the WiFi stack.
  * Verification is deliberately local and cheap (~40ms Ed25519, no TLS, no RPC),
  * so it can run in the request path without pausing the scan or spiking heap.
  */
