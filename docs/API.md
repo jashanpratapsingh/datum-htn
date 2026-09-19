@@ -1,0 +1,341 @@
+# VENDX relay-proxy REST API
+
+All routes are served by `relay-proxy/src/server.ts` on port **3402** by
+default (`DEFAULT_PORT`). Override with the `PORT` environment variable.
+
+CORS: `GET /api/telemetry` sets `Access-Control-Allow-Origin: *` on all
+responses so browser-based agents can reach it directly.
+
+---
+
+## GET /api/telemetry
+
+The device endpoint. Returns either a payment challenge or live telemetry,
+depending on whether a valid `X-Payment-Receipt` header is present.
+
+### Without receipt — 402 Payment Required
+
+**Request**
+
+```
+GET /api/telemetry HTTP/1.1
+```
+
+**Response** `402 application/json`
+
+```jsonc
+{
+  "x402Version": 1,
+  "error": "Payment Required",
+  "accepts": [{
+    "scheme": "exact",
+    "network": "solana-devnet",
+    "maxAmountRequired": "100",           // micro-USDC string
+    "resource": "/api/telemetry",
+    "description": "foot traffic, 5-minute bucket",
+    "mimeType": "application/json",
+    "outputSchema": null,
+    "payTo": "FHcgXc3YzNnq8WKcH8GaDvbKhJ4ycKxHnR7jzA8zAHU",
+    "maxTimeoutSeconds": 300,
+    "asset": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",  // Circle devnet USDC
+    "extra": null
+  }],
+  "nonce": "9f2c4a1b…",                  // 32-char hex, single-use
+  "expiresAt": 1758240300                // Unix seconds
+}
+```
+
+The `nonce` is stored in the relay's in-process nonce store (`nonce-store.ts`)
+and burned on first use. Its TTL is 300 seconds.
+
+Type: `PaymentRequiredBody` from `@vendx/protocol`.
+
+### With a valid receipt — 200 OK
+
+**Request**
+
+```
+GET /api/telemetry HTTP/1.1
+X-Payment-Receipt: <body>.<sig>
+```
+
+`<body>` is a base64url-encoded `ReceiptBody` JSON string.
+`<sig>` is a base64url-encoded Ed25519 signature over the body bytes.
+
+**Response** `200 application/json`
+
+The response shape depends on whether a real HTN badge is attached to the
+relay's host machine (see `badge-source.ts`):
+
+#### Badge attached (`source: "badge"`)
+
+```jsonc
+{
+  "deviceId": "htn-badge-<deviceHash>",
+  "timestamp": 1758240000,
+  "source": "badge",
+  "chip": "ESP32-C3",
+  "deviceHash": "<sha256-prefix-of-BLE-MAC>",  // raw MAC never published
+  "freeHeap": 28396,
+  "largestBlock": 19456,
+  "lvglUsedPct": 12,
+  "bleState": 1,
+  "bootCount": 4,
+  "resetReasons": { "0": 3, "1": 1 },
+  "taskCount": 9,
+  "fsBytes": 1310720
+}
+```
+
+Badge readings are cached for ~8 s (one UART cannot serve a burst). If the
+console wedges, the relay degrades to the simulator response with
+`"source": "simulator"`, `"degradedFrom": "badge"`, and an `"error"` string.
+
+#### No badge attached — simulator (`source: "simulator"`)
+
+```jsonc
+{
+  "deviceId": "esp32-sim-001",
+  "timestamp": 1758240000,
+  "footTraffic": 42,           // random 0–100
+  "temperature": 22.73,
+  "bucket": "5min",
+  "_sim": true,
+  "source": "simulator"
+}
+```
+
+### With an invalid receipt — 402
+
+```jsonc
+{ "error": "bad_signature" }
+```
+
+Possible error values: `malformed_header`, `bad_signature`, `receipt_expired`,
+`wrong_recipient`, `wrong_network`, `insufficient_amount`, `nonce_unknown`,
+`nonce_replayed`, `nonce_expired`.
+
+---
+
+## POST /settle
+
+The facilitator endpoint. The buyer calls this after executing a Solana USDC
+transfer to obtain a relay-signed receipt that the device will accept.
+
+In simulator mode the relay trusts the buyer's reported `txSignature` without
+querying Solana RPC (the demo is about the receipt-verification path). A
+production deploy should call `getSignatureStatuses` before signing.
+
+**Request** `application/json`
+
+```jsonc
+{
+  "nonce": "9f2c4a1b…",              // required — must match a live challenge nonce
+  "txSignature": "5j7sK…",          // required — base58 Solana tx signature
+  "payTo": "FHcgXc3Y…",             // optional (defaults to "")
+  "amount": "100",                   // optional micro-USDC string (defaults to "0")
+  "network": "solana-devnet"         // optional (defaults to "solana-devnet")
+}
+```
+
+**Success** `200 application/json`
+
+```jsonc
+{
+  "receipt": "<body>.<sig>",         // pass this in X-Payment-Receipt
+  "success": true
+}
+```
+
+Response header: `X-Payment-Response: <base64url SettleResponse>`.
+
+`SettleResponse` shape (decoded):
+
+```jsonc
+{ "success": true, "transaction": "<txSignature>",
+  "network": "solana-devnet", "payer": "simulator" }
+```
+
+**Error — bad JSON** `400 application/json`
+
+```jsonc
+{ "error": "bad_json" }
+```
+
+**Error — missing fields** `400 application/json`
+
+```jsonc
+{ "error": "missing_fields: need nonce, txSignature" }
+```
+
+**Error — settlement failure** `402 application/json`
+
+```jsonc
+{ "success": false, "errorReason": "<reason>" }
+```
+
+Types: `SettleRequest`/`SettleOk`/`SettleErr` in `relay-proxy/src/facilitator.ts`;
+`SettleResponse` in `@vendx/protocol`.
+
+---
+
+## GET /health
+
+Liveness check.
+
+**Response** `200 application/json`
+
+```jsonc
+{ "status": "ok", "mode": "badge" }
+// or
+{ "status": "ok", "mode": "simulator" }
+```
+
+`mode` reflects whether a real badge is attached at `VENDX_BADGE_PORT`. It is
+`"badge"` when `/dev/cu.usbmodem101` exists, `"simulator"` otherwise. Source:
+`badgeAttached()` in `relay-proxy/src/badge-source.ts`.
+
+---
+
+## GET /api/devices
+
+Returns the device fleet (currently one device — the attached badge or simulator).
+
+**Response** `200 application/json`
+
+```jsonc
+{
+  "devices": [{
+    "id": "htn-badge-<16-char-hash>",
+    "source": "badge",            // or "simulator"
+    "priceUsd": 0.0001,
+    "freeHeap": 79652,
+    "largestBlock": 65536,
+    "chip": "ESP32-C3",
+    "lastSeen": 1758240000,
+    "totalSales": 4,
+    "totalEarnedMicroUsdc": "400"
+  }]
+}
+```
+
+`freeHeap` and `largestBlock` are `null` in simulator mode (fields not present).
+
+---
+
+## GET /api/devices/:id
+
+Single device detail with up to 50 recent sales.
+
+**Path parameter:** `id` — URL-encoded device ID from `/api/devices`.
+
+**Response** `200 application/json`
+
+```jsonc
+{
+  "device": { /* same shape as a single entry from /api/devices */ },
+  "recentSales": [ /* up to 50 sale records */ ]
+}
+```
+
+**Error — not found** `404 application/json`
+
+```jsonc
+{ "error": "device_not_found", "id": "<the id you passed>" }
+```
+
+---
+
+## GET /api/sales
+
+All in-memory settlement records (cleared on relay restart).
+
+**Response** `200 application/json`
+
+```jsonc
+{
+  "sales": [{
+    "id": "<nonce>",
+    "nonce": "9f2c4a1b…",
+    "amountMicroUsdc": "100",
+    "timestamp": 1758240000,
+    "txSignature": "SimTx1111…",
+    "source": "badge"             // or "simulator"
+  }]
+}
+```
+
+---
+
+## GET /api/policy
+
+Current APEX agent spend policy state.
+
+**Response** `200 application/json`
+
+```jsonc
+{
+  "capMicroUsdc": "5000000",
+  "spentMicroUsdc": "400",
+  "remainingMicroUsdc": "4999600",
+  "date": "2026-09-19",
+  "capUsd": 5.0,
+  "spentUsd": 0.0004,
+  "remainingUsd": 4.9996,
+  "perRequestLimitMicroUsdc": "100",
+  "perVendorLimitMicroUsdc": "1000000"
+}
+```
+
+Source: `data/spend-ledger.json` (written by `agent-buyer/src/policy.ts`).
+Resets daily. Returns zeroed values if no spend has occurred yet.
+
+---
+
+## GET /api/ledger
+
+On-chain settlement summary. The Anchor program (`solana-ledger/`) is
+compile-verified; devnet deployment is a `solana program deploy` away.
+
+**Response** `200 application/json`
+
+```jsonc
+{
+  "programId": "VnDXzkZKqiG2X8kGBJYDqExQEuCz9TnshCHsf2WVEoY",
+  "network": "solana-devnet",
+  "deployed": false,
+  "totalBuckets": 4,
+  "totalSettledMicroUsdc": "400",
+  "totalSettledUsd": 0.0004,
+  "entries": [{
+    "nonce": "9f2c4a1b…",
+    "amountMicroUsdc": "100",
+    "timestamp": 1758240000,
+    "txSignature": "SimTx1111…",
+    "source": "badge",
+    "solscanUrl": "https://solscan.io/tx/SimTx1111…?cluster=devnet"
+  }],
+  "compressionNote": "Each batch of up to 64 buckets is committed as a single state-root update, versus 64 separate rent-paying accounts in naive storage."
+}
+```
+
+Up to 20 most recent entries are returned. `deployed: false` until
+`solana program deploy target/deploy/vendx_zk.so` runs against devnet.
+
+---
+
+## Key persistence
+
+The facilitator Ed25519 keypair is generated on first start and written to
+`keys/facilitator.json` (git-ignored). The public key is logged at startup as
+`[relay-proxy] facilitator pubkey loaded`. The ESP32 firmware has the matching
+public key compiled in — rotating it requires a firmware rebuild.
+
+## Environment variables
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `PORT` | `3402` | HTTP listen port |
+| `VENDX_PY` | `.venv-pio/bin/python` | Python interpreter for `scripts/badge.py` |
+| `VENDX_BADGE_SCRIPT` | `scripts/badge.py` | Serial bridge script |
+| `VENDX_BADGE_PORT` | `/dev/cu.usbmodem101` | USB serial device for the HTN badge |

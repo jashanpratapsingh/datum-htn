@@ -1,0 +1,201 @@
+@import "tailwindcss";
+
+/*
+  VENDX — vend-panel design system.
+
+  The product is a vending machine for data, so the visual language comes from
+  that world: vacuum-fluorescent cash-register readouts behind smoked glass,
+  and the dot-matrix receipt a transaction prints.
+
+  One rule carries the whole system: EVERY SURFACE IS GLASS OR PAPER.
+  Glass is dark and emits light (devices, terminals, the hero).
+  Paper is light and absorbs it (the ledger, receipts).
+  There is no third surface.
+*/
+
+@theme {
+  /* --- glass: the dark side --- */
+  --color-glass: #071014;        /* smoked VFD glass, blue-green cast */
+  --color-glass-lift: #0b1a1f;   /* a panel raised off the backplane */
+  --color-glass-deep: #040a0d;   /* recessed wells, video letterbox */
+
+  /* --- readout colours --- */
+  --color-phosphor: #7ff3e0;     /* VFD cyan-green. the primary readout */
+  --color-phosphor-dim: #4a8f86; /* de-emphasised readout text */
+  --color-amber: #ffb642;        /* MONEY ONLY. never decorative */
+  --color-alarm: #ff6b5a;        /* denials, failures, over-cap */
+
+  /* --- paper: the light side --- */
+  --color-paper: #e6e1d3;        /* receipt stock */
+  --color-paper-shade: #d4cdba;  /* fold / perforation shading */
+  --color-ink: #1a1512;          /* dot-matrix ink */
+  --color-ink-fade: #6b6154;     /* second-pass ink, secondary text */
+
+  /* --- structure --- */
+  --color-rule: #1d3a3a;         /* hairline divisions on glass */
+  --color-rule-bright: #2f5f5c;  /* active / focused division */
+
+  /* --- type --- */
+  --font-panel: var(--font-plex-condensed), "IBM Plex Sans Condensed", ui-sans-serif, system-ui, sans-serif;
+  --font-readout: var(--font-plex-mono), "IBM Plex Mono", ui-monospace, monospace;
+}
+
+html {
+  color-scheme: dark;
+}
+
+body {
+  background: var(--color-glass);
+  color: var(--color-phosphor);
+  font-family: var(--font-panel);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Every numeral on this site is a physical readout, so it is tabular. */
+.readout {
+  font-family: var(--font-readout);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1, "zero" 1;
+  letter-spacing: -0.01em;
+}
+
+/*
+  Plate lettering — the stamped label on a vending machine fascia.
+  This is the ONLY place all-caps is allowed; it is machine labelling,
+  not a decorative eyebrow.
+*/
+.plate {
+  font-family: var(--font-readout);
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-size: 10px;
+  color: var(--color-phosphor-dim);
+}
+
+/* ---------------------------------------------------------------- *
+   The vend panel: a readout seen through a bezel.
+   One panel per concern — not a grid of identical cards.
+ * ---------------------------------------------------------------- */
+
+.panel {
+  position: relative;
+  background: var(--color-glass-lift);
+  border: 1px solid var(--color-rule);
+  border-radius: 2px;
+  /* Bezel: a bright top edge and a dark well, like moulded plastic. */
+  box-shadow:
+    inset 0 1px 0 rgba(127, 243, 224, 0.06),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.5);
+}
+
+/* Internal divisions are hairlines, never nested cards. */
+.panel-divide {
+  border-top: 1px solid var(--color-rule);
+}
+.panel-divide-x {
+  border-left: 1px solid var(--color-rule);
+}
+
+/*
+  Phosphor bloom. A VFD segment glows into the glass around it.
+  Applied to live readouts only — a static label does not glow.
+*/
+.bloom {
+  text-shadow:
+    0 0 8px rgba(127, 243, 224, 0.45),
+    0 0 24px rgba(127, 243, 224, 0.15);
+}
+.bloom-amber {
+  text-shadow:
+    0 0 8px rgba(255, 182, 66, 0.45),
+    0 0 24px rgba(255, 182, 66, 0.15);
+}
+
+/*
+  Scanlines. Constrained to the hero video and live device readouts —
+  a page-wide CRT filter is costume, not design.
+*/
+.scanlines::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 0) 0px,
+    rgba(0, 0, 0, 0) 2px,
+    rgba(0, 0, 0, 0.16) 3px,
+    rgba(0, 0, 0, 0.16) 4px
+  );
+  mix-blend-mode: multiply;
+}
+
+/* ---------------------------------------------------------------- *
+   Paper: the receipt. The second material.
+ * ---------------------------------------------------------------- */
+
+.paper {
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-readout);
+  /* Fibre — paper is not flat. */
+  background-image:
+    repeating-linear-gradient(
+      to bottom,
+      rgba(0, 0, 0, 0.022) 0px,
+      rgba(0, 0, 0, 0) 1px,
+      rgba(0, 0, 0, 0) 3px
+    );
+}
+
+/* Torn perforation along the bottom of a receipt. */
+.paper-tear {
+  --tear: 7px;
+  -webkit-mask:
+    radial-gradient(var(--tear) at 50% 0, #0000 98%, #000) 50% 0 / 14px 100% repeat-x;
+  mask:
+    radial-gradient(var(--tear) at 50% 0, #0000 98%, #000) 50% 0 / 14px 100% repeat-x;
+}
+
+/* ---------------------------------------------------------------- *
+   Motion. One orchestrated moment (the hero scrub); everything else
+   answers a click.
+ * ---------------------------------------------------------------- */
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0; }
+}
+.cursor-blink {
+  animation: blink 1s step-end infinite;
+}
+
+/* Pills rise once, 400ms after load, independent of the typewriter. */
+.rise {
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity 0.4s ease, transform 0.4s ease;
+}
+.rise-in {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* Focus is phosphor on glass and ink on paper, so it stays visible on both. */
+:focus-visible {
+  outline: 2px solid var(--color-phosphor);
+  outline-offset: 2px;
+}
+.paper :focus-visible {
+  outline-color: var(--color-ink);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cursor-blink { animation: none; }
+  .rise { opacity: 1; transform: none; transition: none; }
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

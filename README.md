@@ -6,7 +6,7 @@
 
 Sensors sell their own telemetry to AI agents over [x402](https://github.com/x402-foundation/x402) on Solana — HTTP 402, USDC micropayments, ZK-compressed history.
 
-[Live demo](#) · [Architecture](docs/ARCHITECTURE.md) · [Protocol](docs/PROTOCOL.md) · [Runbook](docs/RUNBOOK.md)
+[Live demo](https://web-rouge-six-46.vercel.app) · [Architecture](docs/ARCHITECTURE.md) · [Protocol](docs/PROTOCOL.md) · [Runbook](docs/RUNBOOK.md)
 
 </div>
 
@@ -83,6 +83,10 @@ No ESP32 required — `relay-proxy` ships a device simulator. With hardware:
 | --- | --- |
 | [ARCHITECTURE.md](docs/ARCHITECTURE.md) | How the four surfaces fit together |
 | [PROTOCOL.md](docs/PROTOCOL.md) | Wire format, and why we diverge from `@x402-solana` |
+| [BADGE.md](docs/BADGE.md) | The real ESP32-C3 badge: hardware, console API, what it refuses to do |
+| [DEMO.md](docs/DEMO.md) | Three-minute demo script, with and without hardware |
+| [API.md](docs/API.md) | Relay REST endpoints |
+| [FEATURES.md](docs/FEATURES.md) | Product surface beyond the hero |
 | [FRONTEND_BRIEF.md](docs/FRONTEND_BRIEF.md) | Hero spec + VENDX re-skin |
 | [FLEET.md](docs/FLEET.md) | The tmux build fleet |
 | [RUNBOOK.md](docs/RUNBOOK.md) | Deploy, demo, troubleshooting |

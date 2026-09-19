@@ -17,6 +17,8 @@ target/
 # never commit real keypairs
 **/id.json
 **/*-keypair.json
+keys/
+data/
 # tooling
 .venv-pio/
 .vercel
@@ -28,3 +30,15 @@ supabase/.branches/
 # fleet runtime
 docs/STATUS.local.md
 .fleet/
+
+# badge screen captures — contain the attendee name, badge ID and identity QR
+badge-screen*.png
+docs/assets/badge-screen*.png
+*.shot.txt
+
+# tsc --incremental state
+*.tsbuildinfo
+
+# playwright output — never commit
+web/test-results/
+web/playwright-report/
