@@ -4,6 +4,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildDeviceChallenge, verifyDeviceReceipt, VENDOR_PRICE_USD } from './simulator.js';
 import { readBadge, badgeAttached } from './badge-source.js';
+import { captureScreen, screenEnabled } from './badge-screen.js';
 import { settle, type SettleRequest } from './facilitator.js';
 import { recordSale, getSales } from './sales-log.js';
 
@@ -54,6 +55,26 @@ export function createRelayServer(port = DEFAULT_PORT) {
     if (req.method === 'OPTIONS') {
       res.writeHead(204, { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': '*' });
       return res.end();
+    }
+
+    // GET /api/screen — live badge screen, local demo only.
+    // Gated behind VENDX_ALLOW_SCREEN because the badge home screen renders
+    // the attendee's name, badge ID and identity QR. See docs/BADGE.md.
+    if (req.method === 'GET' && pathname === '/api/screen') {
+      if (!screenEnabled()) {
+        return json(res, 404, {
+          error: 'screen_capture_disabled',
+          hint: 'set VENDX_ALLOW_SCREEN=1 to enable; it exposes personal data on the badge screen',
+        });
+      }
+      const pngBuf = await captureScreen();
+      if (!pngBuf) return json(res, 503, { error: 'capture_failed', badgeAttached: badgeAttached() });
+      res.writeHead(200, {
+        'Content-Type': 'image/png',
+        'Cache-Control': 'no-store',
+        'Access-Control-Allow-Origin': '*',
+      });
+      return res.end(pngBuf);
     }
 
     // GET /api/telemetry — paywalled device telemetry endpoint

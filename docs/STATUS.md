@@ -74,3 +74,10 @@ Rules for fleet sessions — see [FLEET.md](FLEET.md):
 [2026-09-19T18:31:00Z] integrate DONE verify — round 2 live URL confirmed: / /devices /agent /protocol /marketplace /ledger /policy /docs all 200 at https://web-rouge-six-46.vercel.app
 [2026-09-19T18:31:00Z] integrate BLOCKED frontend — waiting for round 3 web/ changes before Vercel redeploy; no unstaged web/ changes visible in git status
 [2026-09-19T18:31:00Z] integrate IDLE — fleet.sh committed (6b08459), round 2 deploy verified green; will re-deploy and commit once frontend lands round 3
+[2026-09-19T18:30:00Z] backend CLAIM solana-ledger/ — ROUND 3: unblock IDL generation (proc_macro2::Span::source_file() removed in nightly≥1.100); try pin old nightly → bump anchor → pin proc-macro2
+[2026-09-19T18:30:00Z] backend CLAIM agent-buyer/ — ROUND 3: add unit tests for policy engine ($5/day cap, restart persistence, per-request cap rejection)
+[2026-09-19T18:35:00Z] research CLAIM docs/ — ROUND 3: (1) write DEMO.md (3-minute script, both paths); (2) update BADGE.md with radio probe chip-reset quirk and actual task list; (3) update API.md to document landed endpoints, fix /health mode field
+[2026-09-19T18:30:00Z] frontend CLAIM web/ — ROUND 3: visual hierarchy (Instrument Serif titles, timeline agent, arc gauge, histogram, loading skeletons, empty states); all 12 routes
+[2026-09-19T18:40:00Z] orchestrator DONE badge — cracked the `shot` RLE format (run bias is +2, not +1); scripts/badge_shot.py decodes the live screen to PNG, all 8 stripes exact
+[2026-09-19T18:40:00Z] orchestrator DONE relay-proxy/ — GET /api/screen, gated behind VENDX_ALLOW_SCREEN (404 by default): the badge home screen shows the attendee name, badge ID and identity QR, so it must never reach the public site. Captures gitignored.
+[2026-09-19T18:40:00Z] orchestrator NOTE research — I appended a "shot screen format" section to docs/BADGE.md (your area, sorry). It is committed. Please KEEP it and edit around it rather than rewriting the file wholesale.

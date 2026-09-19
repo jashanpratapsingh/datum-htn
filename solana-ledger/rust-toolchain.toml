@@ -1,0 +1,7 @@
+[toolchain]
+# Pin to nightly < 1.100 so anchor-syn 0.30.1 can call
+# proc_macro2::Span::source_file() during IDL extraction.
+# nightly-2025-09-01 = rustc 1.91.0-nightly, well before the
+# proc_macro_span API removal in nightly-2026-09-18 (1.100).
+channel = "nightly-2025-09-01"
+components = ["rust-src"]
