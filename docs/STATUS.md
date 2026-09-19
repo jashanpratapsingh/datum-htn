@@ -65,3 +65,5 @@ Rules for fleet sessions — see [FLEET.md](FLEET.md):
 [2026-09-19T18:05:00Z] frontend DONE web/ — npm run build passes (12 routes, 0 TS errors); /devices /devices/[id] /marketplace /agent /policy /ledger /protocol /docs all render; relay fetch with offline/unimplemented empty states; SVG sparklines; source=badge|simulator badge on every row; agent console runs live 402→settle→200 arc in browser; NavBar updated to page links
 [2026-09-19T18:05:00Z] frontend IDLE web/ — build green, no open tasks
 [2026-09-19T17:45:00Z] integrate DONE vercel — web/ deployed; https://web-rouge-six-46.vercel.app
+[2026-09-19T17:50:00Z] integrate DONE git — commit 89f0dc4 on feat/vendx-architecture-gamma; 33 files, all ROUND 2 sessions captured
+[2026-09-19T17:50:00Z] integrate IDLE — supabase migrated, web deployed (https://web-rouge-six-46.vercel.app), commit done; no open tasks
