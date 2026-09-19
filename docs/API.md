@@ -186,12 +186,141 @@ Liveness check.
 **Response** `200 application/json`
 
 ```jsonc
+{ "status": "ok", "mode": "badge" }
+// or
 { "status": "ok", "mode": "simulator" }
 ```
 
-(`mode` is always `"simulator"` in the current build regardless of whether a
-real badge is attached — it reflects the relay's transport mode, not the data
-source.)
+`mode` reflects whether a real badge is attached at `VENDX_BADGE_PORT`. It is
+`"badge"` when `/dev/cu.usbmodem101` exists, `"simulator"` otherwise. Source:
+`badgeAttached()` in `relay-proxy/src/badge-source.ts`.
+
+---
+
+## GET /api/devices
+
+Returns the device fleet (currently one device — the attached badge or simulator).
+
+**Response** `200 application/json`
+
+```jsonc
+{
+  "devices": [{
+    "id": "htn-badge-<16-char-hash>",
+    "source": "badge",            // or "simulator"
+    "priceUsd": 0.0001,
+    "freeHeap": 79652,
+    "largestBlock": 65536,
+    "chip": "ESP32-C3",
+    "lastSeen": 1758240000,
+    "totalSales": 4,
+    "totalEarnedMicroUsdc": "400"
+  }]
+}
+```
+
+`freeHeap` and `largestBlock` are `null` in simulator mode (fields not present).
+
+---
+
+## GET /api/devices/:id
+
+Single device detail with up to 50 recent sales.
+
+**Path parameter:** `id` — URL-encoded device ID from `/api/devices`.
+
+**Response** `200 application/json`
+
+```jsonc
+{
+  "device": { /* same shape as a single entry from /api/devices */ },
+  "recentSales": [ /* up to 50 sale records */ ]
+}
+```
+
+**Error — not found** `404 application/json`
+
+```jsonc
+{ "error": "device_not_found", "id": "<the id you passed>" }
+```
+
+---
+
+## GET /api/sales
+
+All in-memory settlement records (cleared on relay restart).
+
+**Response** `200 application/json`
+
+```jsonc
+{
+  "sales": [{
+    "id": "<nonce>",
+    "nonce": "9f2c4a1b…",
+    "amountMicroUsdc": "100",
+    "timestamp": 1758240000,
+    "txSignature": "SimTx1111…",
+    "source": "badge"             // or "simulator"
+  }]
+}
+```
+
+---
+
+## GET /api/policy
+
+Current APEX agent spend policy state.
+
+**Response** `200 application/json`
+
+```jsonc
+{
+  "capMicroUsdc": "5000000",
+  "spentMicroUsdc": "400",
+  "remainingMicroUsdc": "4999600",
+  "date": "2026-09-19",
+  "capUsd": 5.0,
+  "spentUsd": 0.0004,
+  "remainingUsd": 4.9996,
+  "perRequestLimitMicroUsdc": "100",
+  "perVendorLimitMicroUsdc": "1000000"
+}
+```
+
+Source: `data/spend-ledger.json` (written by `agent-buyer/src/policy.ts`).
+Resets daily. Returns zeroed values if no spend has occurred yet.
+
+---
+
+## GET /api/ledger
+
+On-chain settlement summary. The Anchor program (`solana-ledger/`) is
+compile-verified; devnet deployment is a `solana program deploy` away.
+
+**Response** `200 application/json`
+
+```jsonc
+{
+  "programId": "VnDXzkZKqiG2X8kGBJYDqExQEuCz9TnshCHsf2WVEoY",
+  "network": "solana-devnet",
+  "deployed": false,
+  "totalBuckets": 4,
+  "totalSettledMicroUsdc": "400",
+  "totalSettledUsd": 0.0004,
+  "entries": [{
+    "nonce": "9f2c4a1b…",
+    "amountMicroUsdc": "100",
+    "timestamp": 1758240000,
+    "txSignature": "SimTx1111…",
+    "source": "badge",
+    "solscanUrl": "https://solscan.io/tx/SimTx1111…?cluster=devnet"
+  }],
+  "compressionNote": "Each batch of up to 64 buckets is committed as a single state-root update, versus 64 separate rent-paying accounts in naive storage."
+}
+```
+
+Up to 20 most recent entries are returned. `deployed: false` until
+`solana program deploy target/deploy/vendx_zk.so` runs against devnet.
 
 ---
 
@@ -210,14 +339,3 @@ public key compiled in — rotating it requires a firmware rebuild.
 | `VENDX_PY` | `.venv-pio/bin/python` | Python interpreter for `scripts/badge.py` |
 | `VENDX_BADGE_SCRIPT` | `scripts/badge.py` | Serial bridge script |
 | `VENDX_BADGE_PORT` | `/dev/cu.usbmodem101` | USB serial device for the HTN badge |
-
-## Planned endpoints (not yet landed)
-
-The `backend` session has claimed:
-- `GET /api/devices` — device registry from Supabase
-- `GET /api/devices/:id` — single device detail
-- `GET /api/sales` — settlement log
-- `GET /api/policy` — agent-buyer spend state
-- `GET /api/ledger` — solana-ledger program data
-
-This document will be updated once those routes land in `server.ts`.

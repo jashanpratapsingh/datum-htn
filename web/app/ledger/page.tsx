@@ -8,42 +8,32 @@ function solscanUrl(sig: string): string {
 }
 
 function CompressionComparison() {
-  const rows = [
-    {
-      label: 'Standard Solana account (10,000 telemetry records)',
-      cost: '$48.00',
-      color: '#ef4444',
-    },
-    {
-      label: 'ZK-compressed via Light Protocol (same 10,000 records)',
-      cost: '$0.05',
-      color: '#5ed29c',
-    },
-  ];
-
   const ratio = 48 / 0.05;
 
   return (
     <div className="flex flex-col gap-4">
-      {rows.map(({ label, cost, color }) => (
-        <div
-          key={label}
-          className="flex items-center justify-between rounded-xl border border-white/10 bg-white/[0.02] px-5 py-4 gap-4"
-        >
-          <span className="font-[family-name:var(--font-inter)] text-sm text-white/70">
-            {label}
-          </span>
-          <span
-            className="font-[family-name:var(--font-inter)] font-bold text-lg shrink-0"
-            style={{ color }}
-          >
-            {cost}
-          </span>
+      <div className="flex flex-col md:flex-row gap-4">
+        {/* Standard cost */}
+        <div className="flex-1 rounded-xl border border-red-500/15 bg-red-500/[0.04] px-5 py-5">
+          <p className="font-[family-name:var(--font-inter)] text-[10px] text-white/30 mb-2">
+            Standard Solana accounts — 10,000 records
+          </p>
+          <p className="font-[family-name:var(--font-instrument)] text-4xl text-red-400">$48.00</p>
+          <p className="font-[family-name:var(--font-inter)] text-xs text-white/30 mt-1">state rent</p>
         </div>
-      ))}
-      <p className="font-[family-name:var(--font-inter)] text-xs text-white/40 text-right">
-        {ratio.toFixed(0)}× cheaper. That is the reason the project exists.
-      </p>
+        {/* ZK compressed cost */}
+        <div className="flex-1 rounded-xl border border-[#5ed29c]/20 bg-[#5ed29c]/[0.04] px-5 py-5">
+          <p className="font-[family-name:var(--font-inter)] text-[10px] text-white/30 mb-2">
+            ZK-compressed via Light Protocol — same 10,000 records
+          </p>
+          <p className="font-[family-name:var(--font-instrument)] text-4xl text-[#5ed29c]">$0.05</p>
+          <p className="font-[family-name:var(--font-inter)] text-xs text-white/30 mt-1">state rent</p>
+        </div>
+      </div>
+      <div className="flex items-center gap-3">
+        <span className="font-[family-name:var(--font-instrument)] text-3xl text-white">{ratio.toFixed(0)}×</span>
+        <span className="font-[family-name:var(--font-inter)] text-sm text-white/40">cheaper. That is the reason this project exists.</span>
+      </div>
     </div>
   );
 }
@@ -59,20 +49,19 @@ export default async function LedgerPage() {
       <div className="flex flex-col gap-10">
         {/* Compression argument */}
         <div className="flex flex-col gap-4">
-          <h2 className="font-[family-name:var(--font-inter)] font-extrabold text-lg text-white">
+          <h2 className="font-[family-name:var(--font-inter)] text-sm font-semibold text-white/40">
             The rent argument
           </h2>
-          <p className="font-[family-name:var(--font-inter)] text-sm text-white/50">
+          <p className="font-[family-name:var(--font-inter)] text-sm text-white/50 max-w-2xl">
             Telemetry at IoT scale means thousands of records per device per day. Standard Solana
-            accounts make this cost-prohibitive. Light Protocol ZK compression changes the
-            economics by a factor of &gt;900.
+            accounts make this cost-prohibitive. Light Protocol ZK compression changes the economics.
           </p>
           <CompressionComparison />
         </div>
 
         {/* Settlement list */}
         <div className="flex flex-col gap-4">
-          <h2 className="font-[family-name:var(--font-inter)] font-extrabold text-lg text-white">
+          <h2 className="font-[family-name:var(--font-inter)] text-sm font-semibold text-white/40">
             Settled transactions
           </h2>
 
@@ -88,15 +77,10 @@ export default async function LedgerPage() {
             </div>
           ) : (
             <div className="flex flex-col gap-3">
-              <div className="rounded-xl border border-white/10 bg-white/[0.02] px-5 py-4">
-                <p className="font-[family-name:var(--font-inter)] text-[10px] text-white/30 uppercase tracking-wider mb-1">
-                  Total settled
-                </p>
-                <p className="font-[family-name:var(--font-inter)] font-extrabold text-2xl text-[#5ed29c]">
-                  $
-                  {(
-                    result.data.reduce((s, e) => s + Number(e.amount), 0) / 1_000_000
-                  ).toFixed(4)}
+              <div className="rounded-xl border border-[#5ed29c]/15 bg-[#5ed29c]/[0.03] px-5 py-4">
+                <p className="font-[family-name:var(--font-inter)] text-[10px] text-white/30 mb-1">Total settled</p>
+                <p className="font-[family-name:var(--font-instrument)] text-3xl text-[#5ed29c]">
+                  ${(result.data.reduce((s, e) => s + Number(e.amount), 0) / 1_000_000).toFixed(4)}
                 </p>
               </div>
 

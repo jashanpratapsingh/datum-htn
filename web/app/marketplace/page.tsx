@@ -57,7 +57,7 @@ export default async function MarketplacePage() {
 
   return (
     <PageShell
-      title="Data Marketplace"
+      title="Data marketplace"
       subtitle="Every data sale from every device. Provenance label on each row — simulator sales are not mixed with badge hardware."
     >
       {!result.ok ? (
@@ -74,27 +74,21 @@ export default async function MarketplacePage() {
         <div className="flex flex-col gap-6">
           {/* Summary */}
           <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-            <div className="rounded-xl border border-white/10 bg-white/[0.02] px-5 py-4">
-              <p className="font-[family-name:var(--font-inter)] text-[10px] text-white/30 uppercase tracking-wider mb-1">
-                Total sales
-              </p>
-              <p className="font-[family-name:var(--font-inter)] font-extrabold text-2xl text-white">
+            <div className="rounded-xl border border-white/8 bg-white/[0.02] px-5 py-4">
+              <p className="font-[family-name:var(--font-inter)] text-[10px] text-white/30 mb-1">Total sales</p>
+              <p className="font-[family-name:var(--font-instrument)] text-3xl text-white">
                 {result.data.length}
               </p>
             </div>
-            <div className="rounded-xl border border-white/10 bg-white/[0.02] px-5 py-4">
-              <p className="font-[family-name:var(--font-inter)] text-[10px] text-white/30 uppercase tracking-wider mb-1">
-                Total revenue
-              </p>
-              <p className="font-[family-name:var(--font-inter)] font-extrabold text-2xl text-[#5ed29c]">
+            <div className="rounded-xl border border-[#5ed29c]/15 bg-[#5ed29c]/[0.03] px-5 py-4">
+              <p className="font-[family-name:var(--font-inter)] text-[10px] text-white/30 mb-1">Total revenue</p>
+              <p className="font-[family-name:var(--font-instrument)] text-3xl text-[#5ed29c]">
                 ${(totalRevenueMicro / 1_000_000).toFixed(4)}
               </p>
             </div>
-            <div className="rounded-xl border border-white/10 bg-white/[0.02] px-5 py-4">
-              <p className="font-[family-name:var(--font-inter)] text-[10px] text-white/30 uppercase tracking-wider mb-1">
-                Avg price
-              </p>
-              <p className="font-[family-name:var(--font-inter)] font-extrabold text-2xl text-white">
+            <div className="rounded-xl border border-white/8 bg-white/[0.02] px-5 py-4">
+              <p className="font-[family-name:var(--font-inter)] text-[10px] text-white/30 mb-1">Avg price</p>
+              <p className="font-[family-name:var(--font-instrument)] text-3xl text-white">
                 ${result.data.length
                   ? (totalRevenueMicro / result.data.length / 1_000_000).toFixed(6)
                   : '0.000000'}

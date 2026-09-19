@@ -3,15 +3,13 @@
 import { useState, useCallback } from 'react';
 import NavBar from '@/components/NavBar';
 import { SourceBadge } from '@/components/SourceBadge';
-import { Play, CheckCircle, XCircle, Loader, Circle } from 'lucide-react';
+import { Play, CheckCircle, XCircle, AlertCircle } from 'lucide-react';
 import type { PaymentRequiredBody } from '@vendx/protocol';
 
-// Micro-USDC → USD display (no node:crypto, pure math)
 function microToUsd(micro: string): string {
   return (Number(micro) / 1_000_000).toFixed(6);
 }
 
-// Browser-safe random hex (uses Web Crypto)
 function randomHex(n: number): string {
   const bytes = crypto.getRandomValues(new Uint8Array(n));
   return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
@@ -22,19 +20,34 @@ type StepStatus = 'idle' | 'running' | 'done' | 'error';
 interface HandshakeStep {
   label: string;
   detail?: string;
+  party: 'agent' | 'device' | 'chain' | 'policy';
 }
 
 const STEPS: HandshakeStep[] = [
-  { label: 'AI requests sensor data', detail: 'GET /api/telemetry' },
-  { label: 'ESP32 → HTTP 402 Payment Required', detail: 'challenge + nonce issued' },
-  { label: 'AI checks APEX policy', detail: '$5.00/day cap' },
-  { label: 'Policy approved', detail: 'within daily budget' },
-  { label: 'Execute USDC transfer (simulated)', detail: 'mock tx signature' },
-  { label: 'Solana confirms transaction', detail: 'devnet, via simulator' },
-  { label: 'AI submits receipt to ESP32', detail: 'POST /settle → GET /api/telemetry' },
-  { label: 'ESP32 verifies receipt (offline, ~40ms)', detail: 'Ed25519 + nonce check' },
-  { label: 'ESP32 returns real-time sensor data', detail: 'source=badge or simulator' },
+  { label: 'Agent requests sensor data', detail: 'GET /api/telemetry', party: 'agent' },
+  { label: 'Device issues 402 challenge', detail: 'nonce minted, 60s TTL', party: 'device' },
+  { label: 'Agent consults APEX policy', detail: '$5.00/day spend cap', party: 'policy' },
+  { label: 'Policy approved', detail: 'within daily budget', party: 'policy' },
+  { label: 'USDC transfer submitted', detail: 'mock tx signature, simulator', party: 'chain' },
+  { label: 'Solana confirms transaction', detail: 'devnet — no chain latency', party: 'chain' },
+  { label: 'Agent replays receipt', detail: 'POST /settle → GET /api/telemetry', party: 'agent' },
+  { label: 'Device verifies offline', detail: 'Ed25519 + nonce check ~40ms', party: 'device' },
+  { label: 'Telemetry dispensed', detail: 'source=badge or simulator', party: 'device' },
 ];
+
+const PARTY_COLORS: Record<HandshakeStep['party'], string> = {
+  agent: '#818cf8',   // indigo
+  device: '#5ed29c',  // green (our accent)
+  chain: '#f59e0b',   // amber
+  policy: '#c084fc',  // purple
+};
+
+const PARTY_LABELS: Record<HandshakeStep['party'], string> = {
+  agent: 'Agent',
+  device: 'Device',
+  chain: 'Solana',
+  policy: 'Policy',
+};
 
 interface RunState {
   statuses: StepStatus[];
@@ -48,11 +61,47 @@ function initialState(): RunState {
   return { statuses: STEPS.map(() => 'idle'), details: STEPS.map(() => null) };
 }
 
-function StepIcon({ status }: { status: StepStatus }) {
-  if (status === 'running') return <Loader size={16} className="text-[#5ed29c] animate-spin" aria-hidden="true" />;
-  if (status === 'done') return <CheckCircle size={16} className="text-[#5ed29c]" aria-hidden="true" />;
-  if (status === 'error') return <XCircle size={16} className="text-red-400" aria-hidden="true" />;
-  return <Circle size={16} className="text-white/20" aria-hidden="true" />;
+function StepDot({ status, color }: { status: StepStatus; color: string }) {
+  if (status === 'running') {
+    return (
+      <span
+        className="relative flex items-center justify-center w-7 h-7 rounded-full border-2"
+        style={{ borderColor: color, backgroundColor: `${color}22` }}
+        aria-hidden="true"
+      >
+        <span
+          className="w-2 h-2 rounded-full animate-ping absolute"
+          style={{ backgroundColor: color, opacity: 0.6 }}
+        />
+        <span className="w-2 h-2 rounded-full" style={{ backgroundColor: color }} />
+      </span>
+    );
+  }
+  if (status === 'done') {
+    return (
+      <span
+        className="flex items-center justify-center w-7 h-7 rounded-full"
+        style={{ backgroundColor: color }}
+        aria-hidden="true"
+      >
+        <CheckCircle size={14} color="#070b0a" />
+      </span>
+    );
+  }
+  if (status === 'error') {
+    return (
+      <span className="flex items-center justify-center w-7 h-7 rounded-full bg-red-500/20 border-2 border-red-500" aria-hidden="true">
+        <XCircle size={14} className="text-red-400" />
+      </span>
+    );
+  }
+  return (
+    <span
+      className="flex items-center justify-center w-7 h-7 rounded-full border-2"
+      style={{ borderColor: 'rgba(255,255,255,0.15)' }}
+      aria-hidden="true"
+    />
+  );
 }
 
 export default function AgentPage() {
@@ -76,57 +125,48 @@ export default function AgentPage() {
     let receipt: string | undefined = undefined;
 
     try {
-      // Step 0 — request telemetry (no payment)
       setStep(0, 'running');
       const r1 = await fetch('/api/telemetry');
       const body1 = await r1.json() as PaymentRequiredBody | { error?: string };
 
       if (r1.status === 503) {
         setStep(0, 'error', 'relay offline');
-        setState((p) => ({ ...p, error: 'Relay is offline. Start relay-proxy first.' }));
+        setState((p) => ({ ...p, error: 'Relay is offline. Start relay-proxy first (port 3402).' }));
         setRunning(false);
         return;
       }
-
       if (r1.status !== 402) {
         setStep(0, 'error', `unexpected ${r1.status}`);
         setState((p) => ({ ...p, error: `Expected 402, got ${r1.status}` }));
         setRunning(false);
         return;
       }
-
       setStep(0, 'done', 'GET /api/telemetry sent');
 
-      // Step 1 — 402 received
       setStep(1, 'running');
       challenge = body1 as PaymentRequiredBody;
       setState((p) => ({ ...p, challenge }));
       await new Promise((r) => setTimeout(r, 300));
-      setStep(1, 'done', `nonce=${challenge.nonce.slice(0, 8)}…`);
+      setStep(1, 'done', `nonce: ${challenge.nonce.slice(0, 12)}…`);
 
-      // Step 2 — policy check
       setStep(2, 'running');
       const req = challenge.accepts[0];
       await new Promise((r) => setTimeout(r, 200));
-      setStep(2, 'done', `${req.maxAmountRequired} µUSDC within $5.00/day`);
+      setStep(2, 'done', `${req.maxAmountRequired} µUSDC ≤ $5.00/day cap`);
 
-      // Step 3 — policy approved
       setStep(3, 'running');
       await new Promise((r) => setTimeout(r, 150));
-      setStep(3, 'done', `payTo=${req.payTo.slice(0, 8)}…`);
+      setStep(3, 'done', `payTo: ${req.payTo.slice(0, 10)}…`);
 
-      // Step 4 — mock USDC transfer
       setStep(4, 'running');
       const txSig = 'SimTx' + randomHex(29);
       await new Promise((r) => setTimeout(r, 250));
-      setStep(4, 'done', `txSig=${txSig.slice(0, 14)}… (simulator)`);
+      setStep(4, 'done', `sig: ${txSig.slice(0, 16)}…`);
 
-      // Step 5 — Solana confirm (simulated, instant)
       setStep(5, 'running');
       await new Promise((r) => setTimeout(r, 300));
       setStep(5, 'done', 'devnet simulator — no chain latency');
 
-      // Step 6 — POST /settle
       setStep(6, 'running');
       const settleRes = await fetch('/api/settle', {
         method: 'POST',
@@ -139,37 +179,29 @@ export default function AgentPage() {
           network: req.network,
         }),
       });
-
       const settleData = await settleRes.json() as { receipt?: string; error?: string };
-
       if (!settleRes.ok || !settleData.receipt) {
         setStep(6, 'error', settleData.error ?? `HTTP ${settleRes.status}`);
         setState((p) => ({ ...p, error: `Settlement failed: ${settleData.error ?? settleRes.status}` }));
         setRunning(false);
         return;
       }
-
       receipt = settleData.receipt;
-      setStep(6, 'done', `receipt=${receipt.slice(0, 16)}…`);
+      setStep(6, 'done', `receipt: ${receipt.slice(0, 18)}…`);
 
-      // Step 7 — device verifies (relay proxies verification)
       setStep(7, 'running');
       const r2 = await fetch('/api/telemetry', {
         headers: { 'x-payment-receipt': receipt },
       });
-
       const body2 = await r2.json() as Record<string, unknown>;
-
       if (!r2.ok) {
         setStep(7, 'error', (body2.error as string) ?? `HTTP ${r2.status}`);
         setState((p) => ({ ...p, error: `Device rejected receipt: ${body2.error ?? r2.status}` }));
         setRunning(false);
         return;
       }
-
       setStep(7, 'done', 'Ed25519 verified, nonce consumed');
 
-      // Step 8 — data returned
       setStep(8, 'running');
       await new Promise((r) => setTimeout(r, 150));
       setState((p) => ({ ...p, telemetry: body2 }));
@@ -183,126 +215,158 @@ export default function AgentPage() {
   }, [setStep]);
 
   const { statuses, details, challenge, telemetry, error } = state;
+  const doneCount = statuses.filter((s) => s === 'done').length;
+  const hasStarted = statuses.some((s) => s !== 'idle');
 
   return (
     <main className="min-h-screen bg-[#070b0a] text-white">
       <NavBar />
       <div className="pt-28 px-6 md:px-12 lg:px-16 max-w-6xl mx-auto pb-24">
-        <h1 className="font-[family-name:var(--font-inter)] font-extrabold text-3xl text-white mb-2">
-          Agent Console
-        </h1>
-        <p className="font-[family-name:var(--font-inter)] text-sm text-white/50 mb-10">
-          Watch the 9-step x402 handshake happen live. Each step lights up when a real network call
-          completes — not on a timer.
-        </p>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          {/* Left: steps */}
+        {/* Page header */}
+        <div className="mb-10 border-l-2 border-[#5ed29c]/30 pl-5">
+          <h1 className="font-[family-name:var(--font-instrument)] text-4xl md:text-5xl text-white leading-tight mb-3">
+            Agent Console
+          </h1>
+          <p className="font-[family-name:var(--font-inter)] text-sm text-white/50 max-w-2xl leading-relaxed">
+            A live run of the 9-step x402 handshake. Each step lights up when a real network call
+            completes — not on a timer. Relay-proxy must be running on port 3402.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_380px] gap-10">
+
+          {/* Timeline */}
           <div className="flex flex-col gap-6">
-            <button
-              onClick={run}
-              disabled={running}
-              className="inline-flex items-center gap-2 rounded-full bg-[#5ed29c] text-[#070b0a] uppercase font-bold text-sm px-6 py-3 hover:bg-[#4ec08a] transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed self-start"
-              aria-label={running ? 'Handshake running' : 'Run handshake'}
-            >
-              <Play size={14} aria-hidden="true" />
-              {running ? 'Running…' : 'Run handshake'}
-            </button>
+
+            {/* Run button + progress */}
+            <div className="flex items-center gap-4">
+              <button
+                onClick={run}
+                disabled={running}
+                className="inline-flex items-center gap-2.5 rounded-full bg-[#5ed29c] text-[#070b0a] font-[family-name:var(--font-inter)] font-bold text-sm px-7 py-3 hover:bg-[#4ec08a] active:scale-95 transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed"
+                aria-label={running ? 'Handshake running' : 'Run handshake'}
+              >
+                <Play size={13} aria-hidden="true" />
+                {running ? 'Running…' : 'Run handshake'}
+              </button>
+              {hasStarted && (
+                <span className="font-[family-name:var(--font-inter)] font-mono text-xs text-white/30">
+                  {doneCount}/{STEPS.length} steps
+                </span>
+              )}
+            </div>
 
             {error && (
-              <div className="rounded-xl border border-red-500/20 bg-red-500/5 px-4 py-3">
+              <div className="flex items-start gap-3 rounded-xl border border-red-500/20 bg-red-500/5 px-4 py-3">
+                <AlertCircle size={15} className="text-red-400 mt-0.5 shrink-0" aria-hidden="true" />
                 <p className="font-[family-name:var(--font-inter)] text-sm text-red-400">{error}</p>
               </div>
             )}
 
-            <ol className="flex flex-col gap-3" aria-label="Handshake steps">
-              {STEPS.map((step, i) => (
-                <li
-                  key={i}
-                  className={`flex items-start gap-4 rounded-xl border px-4 py-3 transition-all duration-200 ${
-                    statuses[i] === 'done'
-                      ? 'border-[#5ed29c]/20 bg-[#5ed29c]/5'
-                      : statuses[i] === 'running'
-                        ? 'border-[#5ed29c]/30 bg-[#5ed29c]/10'
-                        : statuses[i] === 'error'
-                          ? 'border-red-500/20 bg-red-500/5'
-                          : 'border-white/5 bg-white/[0.01]'
-                  }`}
-                >
-                  <StepIcon status={statuses[i]} />
-                  <div className="flex flex-col gap-0.5 flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="font-[family-name:var(--font-inter)] text-[10px] text-white/30 font-mono w-5 shrink-0">
-                        {String(i + 1).padStart(2, '0')}
-                      </span>
-                      <span
-                        className={`font-[family-name:var(--font-inter)] text-sm ${
-                          statuses[i] === 'done'
-                            ? 'text-white'
-                            : statuses[i] === 'error'
-                              ? 'text-red-400'
-                              : 'text-white/60'
-                        }`}
-                      >
-                        {step.label}
-                      </span>
+            {/* Party legend */}
+            <div className="flex flex-wrap gap-4">
+              {(Object.keys(PARTY_LABELS) as HandshakeStep['party'][]).map((p) => (
+                <div key={p} className="flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full" style={{ backgroundColor: PARTY_COLORS[p] }} aria-hidden="true" />
+                  <span className="font-[family-name:var(--font-inter)] text-xs text-white/40">
+                    {PARTY_LABELS[p]}
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            {/* Timeline steps */}
+            <ol className="flex flex-col" aria-label="Handshake steps">
+              {STEPS.map((step, i) => {
+                const color = PARTY_COLORS[step.party];
+                const isActive = statuses[i] === 'running';
+                const isDone = statuses[i] === 'done';
+
+                return (
+                  <li key={i} className="flex gap-4">
+                    {/* Left column: dot + connector */}
+                    <div className="flex flex-col items-center shrink-0 w-7">
+                      <StepDot status={statuses[i]} color={color} />
+                      {i < STEPS.length - 1 && (
+                        <div
+                          className="w-px flex-1 min-h-[1.75rem] mt-1 transition-colors duration-500"
+                          style={{
+                            backgroundColor: isDone
+                              ? `${color}50`
+                              : 'rgba(255,255,255,0.07)',
+                          }}
+                        />
+                      )}
                     </div>
-                    {(details[i] || step.detail) && (
-                      <p className="font-[family-name:var(--font-inter)] font-mono text-[10px] text-white/30 pl-7">
+
+                    {/* Right column */}
+                    <div
+                      className={`flex flex-col gap-1 pb-5 flex-1 pt-0.5 transition-opacity duration-200 ${
+                        i === STEPS.length - 1 ? 'pb-0' : ''
+                      } ${!hasStarted ? 'opacity-60' : statuses[i] === 'idle' && hasStarted ? 'opacity-40' : 'opacity-100'}`}
+                    >
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span
+                          className="font-[family-name:var(--font-inter)] text-sm font-medium leading-snug transition-colors duration-200"
+                          style={{
+                            color: isActive ? color : isDone ? 'rgba(255,255,255,0.9)' : statuses[i] === 'error' ? '#f87171' : 'rgba(255,255,255,0.45)',
+                          }}
+                        >
+                          {step.label}
+                        </span>
+                        <span
+                          className="font-[family-name:var(--font-inter)] text-[10px] px-1.5 py-0.5 rounded"
+                          style={{
+                            backgroundColor: `${color}18`,
+                            color: `${color}aa`,
+                          }}
+                        >
+                          {PARTY_LABELS[step.party]}
+                        </span>
+                      </div>
+                      <p className="font-mono text-[10px] text-white/30 pl-0">
                         {details[i] ?? step.detail}
                       </p>
-                    )}
-                  </div>
-                </li>
-              ))}
+                    </div>
+                  </li>
+                );
+              })}
             </ol>
           </div>
 
-          {/* Right: live data */}
+          {/* Right panel: live data */}
           <div className="flex flex-col gap-4">
-            {/* Challenge */}
+
+            {/* 402 Challenge */}
             {challenge && (
-              <div className="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden">
-                <div className="px-4 py-2 border-b border-white/10 bg-white/[0.02]">
-                  <div className="flex items-center gap-2">
-                    <span className="inline-flex px-2 py-0.5 rounded text-[10px] font-bold font-[family-name:var(--font-inter)] uppercase tracking-wider bg-amber-500/10 text-amber-400 border border-amber-500/20">
-                      402 Challenge
-                    </span>
-                    <span className="font-[family-name:var(--font-inter)] text-[10px] text-white/30">
-                      nonce: {challenge.nonce.slice(0, 16)}…
-                    </span>
-                  </div>
+              <div className="rounded-xl border border-amber-500/20 bg-amber-500/[0.04] overflow-hidden">
+                <div className="px-4 py-3 border-b border-amber-500/15 flex items-center justify-between gap-2">
+                  <span className="font-[family-name:var(--font-inter)] text-xs font-bold text-amber-400">
+                    402 Challenge
+                  </span>
+                  <span className="font-mono text-[10px] text-white/30 truncate">
+                    nonce: {challenge.nonce.slice(0, 14)}…
+                  </span>
                 </div>
-                <div className="px-4 py-3 grid grid-cols-2 gap-2">
+                <div className="px-4 py-4 grid grid-cols-2 gap-3">
                   <div>
-                    <p className="font-[family-name:var(--font-inter)] text-[10px] text-white/30 uppercase tracking-wider mb-0.5">
-                      Resource
-                    </p>
-                    <p className="font-[family-name:var(--font-inter)] font-mono text-xs text-white/70">
-                      {challenge.accepts[0]?.resource}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="font-[family-name:var(--font-inter)] text-[10px] text-white/30 uppercase tracking-wider mb-0.5">
-                      Price
-                    </p>
-                    <p className="font-[family-name:var(--font-inter)] font-bold text-sm text-[#5ed29c]">
+                    <p className="font-[family-name:var(--font-inter)] text-[10px] text-white/30 mb-1">Price</p>
+                    <p className="font-[family-name:var(--font-instrument)] text-2xl text-[#5ed29c]">
                       ${microToUsd(challenge.accepts[0]?.maxAmountRequired ?? '0')}
                     </p>
                   </div>
                   <div>
-                    <p className="font-[family-name:var(--font-inter)] text-[10px] text-white/30 uppercase tracking-wider mb-0.5">
-                      Network
-                    </p>
-                    <p className="font-[family-name:var(--font-inter)] font-mono text-xs text-white/70">
-                      {challenge.accepts[0]?.network}
-                    </p>
+                    <p className="font-[family-name:var(--font-inter)] text-[10px] text-white/30 mb-1">Network</p>
+                    <p className="font-mono text-xs text-white/60">{challenge.accepts[0]?.network}</p>
+                  </div>
+                  <div className="col-span-2">
+                    <p className="font-[family-name:var(--font-inter)] text-[10px] text-white/30 mb-1">Resource</p>
+                    <p className="font-mono text-xs text-white/60 break-all">{challenge.accepts[0]?.resource}</p>
                   </div>
                   <div>
-                    <p className="font-[family-name:var(--font-inter)] text-[10px] text-white/30 uppercase tracking-wider mb-0.5">
-                      Expires in
-                    </p>
-                    <p className="font-[family-name:var(--font-inter)] font-mono text-xs text-white/70">
+                    <p className="font-[family-name:var(--font-inter)] text-[10px] text-white/30 mb-1">Expires in</p>
+                    <p className="font-mono text-xs text-amber-400">
                       {Math.max(0, challenge.expiresAt - Math.floor(Date.now() / 1000))}s
                     </p>
                   </div>
@@ -310,34 +374,40 @@ export default function AgentPage() {
               </div>
             )}
 
-            {/* Telemetry */}
+            {/* Telemetry result */}
             {telemetry && (
-              <div className="rounded-xl border border-[#5ed29c]/20 bg-[#5ed29c]/5 overflow-hidden">
-                <div className="px-4 py-2 border-b border-[#5ed29c]/10 flex items-center gap-2">
-                  <span className="inline-flex px-2 py-0.5 rounded text-[10px] font-bold font-[family-name:var(--font-inter)] uppercase tracking-wider bg-[#5ed29c]/10 text-[#5ed29c] border border-[#5ed29c]/20">
-                    200 OK — Telemetry
+              <div className="rounded-xl border border-[#5ed29c]/25 bg-[#5ed29c]/[0.04] overflow-hidden">
+                <div className="px-4 py-3 border-b border-[#5ed29c]/15 flex items-center gap-2">
+                  <span className="font-[family-name:var(--font-inter)] text-xs font-bold text-[#5ed29c]">
+                    200 OK
+                  </span>
+                  <span className="font-[family-name:var(--font-inter)] text-[10px] text-white/40">
+                    Telemetry dispensed
                   </span>
                   {typeof telemetry.source === 'string' && (
                     <SourceBadge source={telemetry.source as 'badge' | 'simulator'} />
                   )}
                 </div>
-                <pre className="px-4 py-3 font-mono text-[11px] text-white/60 overflow-x-auto whitespace-pre-wrap break-all max-h-60">
+                <pre className="px-4 py-4 font-mono text-[11px] text-white/55 overflow-x-auto whitespace-pre-wrap break-all max-h-64">
                   {JSON.stringify(telemetry, null, 2)}
                 </pre>
               </div>
             )}
 
-            {/* Empty state */}
+            {/* Idle empty state */}
             {!challenge && !telemetry && !error && (
-              <div className="rounded-xl border border-white/10 bg-white/[0.02] p-8 flex flex-col items-center justify-center text-center gap-3 min-h-[200px]">
-                <Play size={24} className="text-white/10" aria-hidden="true" />
-                <p className="font-[family-name:var(--font-inter)] text-sm text-white/30">
-                  Press <strong className="text-white/50">Run handshake</strong> to start the
-                  live demo.
-                </p>
-                <p className="font-[family-name:var(--font-inter)] text-xs text-white/20">
-                  Relay-proxy must be running on port 3402.
-                </p>
+              <div className="rounded-xl border border-white/8 bg-white/[0.015] p-8 flex flex-col items-start gap-4 min-h-[220px] justify-center">
+                <div className="w-10 h-10 rounded-full border border-white/10 flex items-center justify-center">
+                  <Play size={16} className="text-white/20" aria-hidden="true" />
+                </div>
+                <div>
+                  <p className="font-[family-name:var(--font-inter)] text-sm text-white/40 mb-1">
+                    Run the handshake to see live data here.
+                  </p>
+                  <p className="font-[family-name:var(--font-inter)] text-xs text-white/20">
+                    The 402 challenge and telemetry payload appear step by step as each call completes.
+                  </p>
+                </div>
               </div>
             )}
           </div>
