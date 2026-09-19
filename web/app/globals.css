@@ -1,0 +1,55 @@
+@import "tailwindcss";
+
+@theme {
+  --color-accent: #5ed29c;
+  --color-base: #070b0a;
+
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-jakarta: var(--font-jakarta), ui-sans-serif, sans-serif;
+  --font-instrument: var(--font-instrument), ui-serif, serif;
+}
+
+/*
+  Liquid-glass card — the ::before border + mask-composite trick is not
+  expressible as Tailwind utilities, so it lives here.
+*/
+.liquid-glass-card {
+  position: relative;
+  width: 200px;
+  height: 200px;
+  background: rgba(255, 255, 255, 0.01);
+  background-blend-mode: luminosity;
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  flex-shrink: 0;
+}
+
+.liquid-glass-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  padding: 1.4px;
+  border-radius: inherit;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.35) 0%, rgba(255, 255, 255, 0) 100%);
+  -webkit-mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+}
+
+/* Focus ring — visible on every interactive element */
+:focus-visible {
+  outline: 2px solid #5ed29c;
+  outline-offset: 2px;
+}
+
+/* Skip video under prefers-reduced-motion */
+@media (prefers-reduced-motion: reduce) {
+  .hero-video {
+    display: none;
+  }
+}

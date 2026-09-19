@@ -65,14 +65,14 @@ cmd_up() {
   mkdir -p "$LOGS"
   command -v tmux >/dev/null || { echo "tmux missing: brew install tmux"; exit 1; }
   for s in "${SESSIONS[@]}"; do
-    if tmux has-session -t "vendx:$s" 2>/dev/null; then
-      echo "  = vendx:$s already up"; continue
+    if tmux has-session -t "vendx-$s" 2>/dev/null; then
+      echo "  = vendx-$s already up"; continue
     fi
     prompt_for "$s" > "$LOGS/$s.prompt"
-    tmux new-session -d -s "vendx:$s" -c "$ROOT"
-    tmux send-keys -t "vendx:$s" \
+    tmux new-session -d -s "vendx-$s" -c "$ROOT"
+    tmux send-keys -t "vendx-$s" \
       "export PATH=\"$NODE_BIN:\$PATH\"; cd '$ROOT' && claude --permission-mode bypassPermissions -p \"\$(cat '$LOGS/$s.prompt')\" 2>&1 | tee '$LOGS/$s.log'" C-m
-    echo "  + vendx:$s  owns: $(owns "$s")"
+    echo "  + vendx-$s  owns: $(owns "$s")"
   done
   echo
   echo "fleet up. ./scripts/fleet.sh status   |   ./scripts/fleet.sh attach backend"
@@ -81,7 +81,7 @@ cmd_up() {
 cmd_status() {
   echo "SESSIONS"
   for s in "${SESSIONS[@]}"; do
-    if tmux has-session -t "vendx:$s" 2>/dev/null; then
+    if tmux has-session -t "vendx-$s" 2>/dev/null; then
       local n; n=$(wc -l < "$LOGS/$s.log" 2>/dev/null || echo 0)
       printf "  %-10s running   %s lines\n" "$s" "$n"
     else
@@ -95,7 +95,7 @@ cmd_status() {
 
 cmd_down() {
   for s in "${SESSIONS[@]}"; do
-    tmux kill-session -t "vendx:$s" 2>/dev/null && echo "  - vendx:$s" || true
+    tmux kill-session -t "vendx-$s" 2>/dev/null && echo "  - vendx-$s" || true
   done
 }
 
@@ -103,7 +103,7 @@ case "${1:-status}" in
   up)     cmd_up ;;
   status) cmd_status ;;
   down)   cmd_down ;;
-  attach) tmux attach -t "vendx:${2:?need session name}" ;;
+  attach) tmux attach -t "vendx-${2:?need session name}" ;;
   logs)   tail -f "$LOGS/${2:?need session name}.log" ;;
   *)      echo "usage: $0 {up|status|attach NAME|logs NAME|down}"; exit 1 ;;
 esac

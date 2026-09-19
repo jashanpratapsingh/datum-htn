@@ -1,0 +1,14 @@
+{
+  "name": "@vendx/agent-buyer",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/buyer.js",
+  "scripts": {
+    "build": "echo ok",
+    "typecheck": "echo ok"
+  },
+  "dependencies": {
+    "@vendx/protocol": "*"
+  }
+}
