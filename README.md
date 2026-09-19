@@ -6,7 +6,7 @@
 
 Sensors sell their own telemetry to AI agents over [x402](https://github.com/x402-foundation/x402) on Solana — HTTP 402, USDC micropayments, ZK-compressed history.
 
-[Live demo](https://web-rouge-six-46.vercel.app) · [Architecture](docs/ARCHITECTURE.md) · [Protocol](docs/PROTOCOL.md) · [Runbook](docs/RUNBOOK.md)
+[Live demo](https://web-rouge-six-46.vercel.app) · [Architecture](docs/ARCHITECTURE.md) · [Protocol](docs/PROTOCOL.md) · [Runbook](docs/RUNBOOK.md) · [Badge](docs/BADGE.md) · [API](docs/API.md) · [Features](docs/FEATURES.md) · [Demo](docs/DEMO.md)
 
 </div>
 
