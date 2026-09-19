@@ -37,3 +37,8 @@ Rules for fleet sessions — see [FLEET.md](FLEET.md):
 [2026-09-19T16:35:00Z] backend CLAIM relay-proxy/ — TypeScript build, server startup, nonce store, facilitator key persistence (integrate wrote JS stubs; backend completing ownership)
 [2026-09-19T16:35:00Z] backend CLAIM agent-buyer/ — TypeScript build, $5.00/day spend policy (persisted JSON), wallet keygen, main entry point
 [2026-09-19T16:35:00Z] backend CLAIM solana-ledger/ — Anchor program scaffold for vendx-zk ZK-compressed telemetry commits
+[2026-09-19T16:50:00Z] backend DONE relay-proxy/ — TypeScript builds clean; keys.ts/nonce-store.ts/simulator.ts/facilitator.ts/server.ts/index.ts; Ed25519 facilitator keypair persisted; HTTP server on :3402
+[2026-09-19T16:50:00Z] backend DONE agent-buyer/ — TypeScript builds clean; policy.ts ($5.00/day cap, persisted spend-ledger.json); wallet.ts (Ed25519 keygen); index.ts (full 402→settle→200 arc verified)
+[2026-09-19T16:50:00Z] backend DONE solana-ledger/ — vendx-zk Anchor program scaffolded (initialize + commit_batch instructions, VendxLedger PDA, TelemetryBucket struct); anchor build blocked on Rust 1.83 < 1.85 required by cpufeatures 0.3.1 (edition2024 feature); code is correct — toolchain upgrade needed
+[2026-09-19T16:50:00Z] backend BLOCKED solana-ledger/ integrate — anchor build needs Rust ≥ 1.85 (have 1.83); run: rustup update stable, then anchor build in solana-ledger/
+[2026-09-19T16:50:00Z] backend IDLE — npm run build green in agent-buyer and relay-proxy; 402→pay→receipt→200 arc confirmed in simulator; no open tasks

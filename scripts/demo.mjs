@@ -2,14 +2,14 @@
 /**
  * VENDX end-to-end demo.
  *
- * Runs entirely on localhost — no ESP32, no Solana RPC. The relay-proxy
- * starts a combined device-simulator + facilitator; the agent-buyer runs
- * the full 402 → pay → receipt → 200 arc.
+ * Runs entirely on localhost — no ESP32, no Solana RPC.
+ * relay-proxy starts a combined device-simulator + facilitator.
+ * agent-buyer runs the full 402 → pay → receipt → 200 arc.
  *
- * Output comes from simulator (src: _sim: true) — not from hardware.
+ * Source: simulator — all telemetry is synthetic (_sim: true).
  */
 
-import { generateFacilitatorKey, createSimulator, VENDOR_WALLET } from '../relay-proxy/src/index.js';
+import { createRelayServer } from '../relay-proxy/dist/server.js';
 import { buy } from '../agent-buyer/src/buyer.js';
 
 const PORT = 3402;
@@ -20,24 +20,19 @@ async function main() {
   console.log('╚══════════════════════════════════════════════════════╝\n');
   console.log('Mode: simulator (relay-proxy in-process, no hardware)\n');
 
-  // Generate a fresh facilitator keypair. Production: load from env / KMS.
-  const facilitatorKey = generateFacilitatorKey();
-  console.log(`Facilitator pubkey : ${Buffer.from(facilitatorKey.publicKey).toString('hex').slice(0, 32)}…`);
-  console.log(`Vendor wallet      : ${VENDOR_WALLET.slice(0, 12)}…`);
-  console.log(`Port               : ${PORT}\n`);
-
-  // Start the combined simulator + facilitator server.
-  const server = createSimulator({
-    facilitatorSecretKey: facilitatorKey.secretKey,
-    facilitatorPublicKey: facilitatorKey.publicKey,
-    port: PORT,
+  // The relay-proxy generates/loads a facilitator keypair from keys/ on first
+  // run. Buyer replays with the facilitator-signed receipt — same arc as
+  // production, no external keys passed in.
+  const server = createRelayServer(PORT);
+  await new Promise((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(PORT, resolve);
   });
 
-  // Give the server a tick to bind before making requests.
-  await new Promise(r => setTimeout(r, 50));
+  console.log(`Relay server       : http://localhost:${PORT}`);
 
   try {
-    console.log('─── AI Scraper requesting telemetry ───────────────────\n');
+    console.log('\n─── AI Scraper requesting telemetry ───────────────────\n');
 
     const result = await buy({
       baseUrl: `http://localhost:${PORT}`,

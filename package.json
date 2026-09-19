@@ -8,7 +8,7 @@
   "scripts": {
     "build": "npm run build --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
-    "demo": "node scripts/demo.mjs",
+    "demo": "npm run build -w @vendx/relay-proxy && node scripts/demo.mjs",
     "fleet": "./scripts/fleet.sh"
   }
 }

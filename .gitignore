@@ -17,6 +17,8 @@ target/
 # never commit real keypairs
 **/id.json
 **/*-keypair.json
+keys/
+data/
 # tooling
 .venv-pio/
 .vercel
