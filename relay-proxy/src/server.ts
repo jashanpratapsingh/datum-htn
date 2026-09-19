@@ -16,6 +16,9 @@ export const DEFAULT_PORT = 3402;
 /** Program ID for the vendx-zk Anchor program on devnet. */
 const VENDX_PROGRAM_ID = 'VnDXzkZKqiG2X8kGBJYDqExQEuCz9TnshCHsf2WVEoY';
 
+/** Must match DAY_CAP_MICRO_USDC in agent-buyer/src/policy.ts. */
+const DAY_CAP_MICRO_USDC = 5_000_000n;
+
 function readBody(req: IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
     let buf = '';
@@ -183,12 +186,11 @@ export function createRelayServer(port = DEFAULT_PORT) {
 
     // GET /api/policy — APEX spend policy state
     if (req.method === 'GET' && pathname === '/api/policy') {
-      const DAY_CAP = 5_000_000n;
       const ledger = readSpendLedger();
       const spent = BigInt(ledger.spentMicroUsdc);
-      const remaining = spent >= DAY_CAP ? 0n : DAY_CAP - spent;
+      const remaining = spent >= DAY_CAP_MICRO_USDC ? 0n : DAY_CAP_MICRO_USDC - spent;
       return json(res, 200, {
-        capMicroUsdc: DAY_CAP.toString(),
+        capMicroUsdc: DAY_CAP_MICRO_USDC.toString(),
         spentMicroUsdc: spent.toString(),
         remainingMicroUsdc: remaining.toString(),
         date: ledger.date,
