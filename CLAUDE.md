@@ -9,8 +9,7 @@ cd relay-proxy && npm run build            # build relay-proxy
 cd web && npm run build                    # Next.js production build
 ```
 
-The root package.json uses npm workspaces for packages/ and agent-buyer/.
-relay-proxy/, web/ are installed independently.
+The root package.json uses npm workspaces for all sub-packages: `packages/*`, `agent-buyer`, `relay-proxy`, and `web`. Run `npm install` at the root to install everything.
 
 There is no unified test runner yet. npm test -w @vendx/agent-buyer is the only
 automated test suite.
@@ -47,7 +46,7 @@ The payment handshake is a custom x402 v1 flow:
 | relay-proxy/ | Facilitator, device simulator, settlement checker, REST API |
 | firmware-vendor/ | ESP32-C3 C++ (PlatformIO): BLE sensing, on-device Ed25519 verifier |
 | solana-ledger/ | Anchor program: ZK-compressed telemetry commits via Light Protocol |
-| web/ | Next.js marketplace frontend (12 routes) |
+| web/ | Next.js marketplace frontend |
 | supabase/ | Supabase project config and nonce migrations |
 | badge-app/ | Lua app for the Hack the North ESP32-C3 badge |
 
