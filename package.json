@@ -1,0 +1,14 @@
+{
+  "name": "vendx",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "workspaces": ["packages/*", "agent-buyer", "relay-proxy", "web"],
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "demo": "node scripts/demo.mjs",
+    "fleet": "./scripts/fleet.sh"
+  }
+}
