@@ -1,3 +1,82 @@
+## Commands
+
+```bash
+nvm use                                    # pin Node 22.23.2
+npm install                                # install all workspaces
+npm run build -w @vendx/protocol           # build the shared protocol package
+npm test -w @vendx/agent-buyer             # run policy unit tests (4 tests)
+cd relay-proxy && npm run build            # build relay-proxy
+cd web && npm run build                    # Next.js production build
+```
+
+The root package.json uses npm workspaces for packages/ and agent-buyer/.
+relay-proxy/, web/ are installed independently.
+
+There is no unified test runner yet. npm test -w @vendx/agent-buyer is the only
+automated test suite.
+
+**Import convention:** moduleResolution: bundler + "module": "ES2022" — all relative
+imports in src/ files use .js extensions even though source is .ts
+(e.g. import { foo } from './types.js'). All packages are ESM-only ("type": "module");
+no require().
+
+@solana/web3.js is listed as a dep in packages/vendx-protocol but is currently unused
+there — reserved for agent-buyer/relay-proxy.
+
+docs/STATUS.md is an append-only multi-agent build log. Do not edit existing entries.
+
+---
+
+## Architecture
+
+VENDX lets an ESP32 (or its simulator) sell sensor telemetry to AI agents over HTTP.
+The payment handshake is a custom x402 v1 flow:
+
+1. **Device** answers 402 Payment Required with a challenge body (types.ts).
+2. **Buyer** pays USDC on Solana and sends the tx signature in X-PAYMENT.
+3. **Relay** confirms settlement on-chain, signs a compact receipt, returns it.
+4. **Buyer** re-presents the receipt in X-PAYMENT-RECEIPT.
+5. **Device** verifies the Ed25519 signature offline (~40 ms) — no TLS, no RPC.
+
+### Packages
+
+| Path | Role |
+|------|------|
+| packages/vendx-protocol/ | Shared TypeScript wire types, codecs, challenge builders |
+| agent-buyer/ | AI scraper: intercepts 402, checks spend policy, pays |
+| relay-proxy/ | Facilitator, device simulator, settlement checker, REST API |
+| firmware-vendor/ | ESP32-C3 C++ (PlatformIO): BLE sensing, on-device Ed25519 verifier |
+| solana-ledger/ | Anchor program: ZK-compressed telemetry commits via Light Protocol |
+| web/ | Next.js marketplace frontend (12 routes) |
+| supabase/ | Supabase project config and nonce migrations |
+| badge-app/ | Lua app for the Hack the North ESP32-C3 badge |
+
+### Critical protocol decisions
+
+**Do not use @x402-solana/*.** Wire-incompatible with canonical x402 v1 (wrong mint,
+wrong payTo semantics, wrong header shapes). See docs/PROTOCOL.md.
+
+**payTo is the wallet owner, not the ATA.** The payer derives the ATA.
+
+**USDC mints:**
+- Devnet: 4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU (Circle official)
+- Mainnet: EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v
+
+**Network IDs:** solana-devnet / solana (x402 v1 spelling, not CAIP-2).
+
+**Receipt signature covers the base64url text, not the pre-encoding JSON.**
+Wire format: <body>.<sig> (both base64url). The device verifies exact on-wire bytes.
+
+**canonicalJson sorts object keys** for TypeScript/C++ byte-level agreement.
+Any new ReceiptBody field must be mirrored in firmware-vendor/src/verifier.cpp.
+
+**relay-proxy runs on port 3402** (not 3001). See docs/RUNBOOK.md.
+
+**agent-buyer/src/buyer.js is intentionally plain JS** — it's the runtime entry
+called by scripts/demo.mjs; the TypeScript sources in src/ compile to dist/.
+
+---
+
 # This is a personal machine
 
 Owner: **Jashan Pratap Singh**. Not a work machine. Two standing rules, no exceptions:
