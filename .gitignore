@@ -1,0 +1,30 @@
+# deps
+node_modules/
+.pnp.*
+# builds
+dist/
+build/
+.next/
+out/
+target/
+.pio/
+# env & secrets
+.env
+.env.*
+!.env.example
+.keys/
+*.pem
+# never commit real keypairs
+**/id.json
+**/*-keypair.json
+# tooling
+.venv-pio/
+.vercel
+.DS_Store
+*.log
+# supabase local state
+supabase/.temp/
+supabase/.branches/
+# fleet runtime
+docs/STATUS.local.md
+.fleet/
