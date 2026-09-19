@@ -42,3 +42,5 @@ Rules for fleet sessions — see [FLEET.md](FLEET.md):
 [2026-09-19T16:50:00Z] backend DONE solana-ledger/ — vendx-zk Anchor program scaffolded (initialize + commit_batch instructions, VendxLedger PDA, TelemetryBucket struct); anchor build blocked on Rust 1.83 < 1.85 required by cpufeatures 0.3.1 (edition2024 feature); code is correct — toolchain upgrade needed
 [2026-09-19T16:50:00Z] backend BLOCKED solana-ledger/ integrate — anchor build needs Rust ≥ 1.85 (have 1.83); run: rustup update stable, then anchor build in solana-ledger/
 [2026-09-19T16:50:00Z] backend IDLE — npm run build green in agent-buyer and relay-proxy; 402→pay→receipt→200 arc confirmed in simulator; no open tasks
+[2026-09-19T16:55:00Z] integrate DONE e2e — npm run demo green (402→pay→receipt→200 SIM); 2 commits on feat/vendx-architecture-gamma; relay-proxy TS dist built; supabase/migrations/0001_nonces.sql; .gitignore: keys/ data/ excluded; package.json demo builds relay-proxy before running
+[2026-09-19T16:55:00Z] integrate IDLE git — demo arc green, all sessions committed, no open tasks
