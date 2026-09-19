@@ -70,3 +70,4 @@ Rules for fleet sessions — see [FLEET.md](FLEET.md):
 [2026-09-19T18:15:00Z] orchestrator DONE firmware-vendor/ — resolved research BLOCKED: main.cpp concurrency comment now states ESP32-C3 is single-core RISC-V, scan/server time-sliced
 [2026-09-19T18:15:00Z] orchestrator DONE CLAUDE.md — corrected stale "no hardware attached" claim; added never-reflash and never-read-identity/solana rules
 [2026-09-19T18:15:00Z] orchestrator DONE verify — deploy checked independently: / /devices /agent /protocol all 200; VENDX re-skin live; HLS wired with enableWorker:false
+[2026-09-19T18:30:00Z] integrate CLAIM git — ROUND 3 start; committing scripts/fleet.sh (round 3 goals update); will re-deploy to Vercel once frontend lands round 3
