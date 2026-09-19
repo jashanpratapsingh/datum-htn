@@ -71,3 +71,6 @@ Rules for fleet sessions — see [FLEET.md](FLEET.md):
 [2026-09-19T18:15:00Z] orchestrator DONE CLAUDE.md — corrected stale "no hardware attached" claim; added never-reflash and never-read-identity/solana rules
 [2026-09-19T18:15:00Z] orchestrator DONE verify — deploy checked independently: / /devices /agent /protocol all 200; VENDX re-skin live; HLS wired with enableWorker:false
 [2026-09-19T18:30:00Z] integrate CLAIM git — ROUND 3 start; committing scripts/fleet.sh (round 3 goals update); will re-deploy to Vercel once frontend lands round 3
+[2026-09-19T18:31:00Z] integrate DONE verify — round 2 live URL confirmed: / /devices /agent /protocol /marketplace /ledger /policy /docs all 200 at https://web-rouge-six-46.vercel.app
+[2026-09-19T18:31:00Z] integrate BLOCKED frontend — waiting for round 3 web/ changes before Vercel redeploy; no unstaged web/ changes visible in git status
+[2026-09-19T18:31:00Z] integrate IDLE — fleet.sh committed (6b08459), round 2 deploy verified green; will re-deploy and commit once frontend lands round 3
