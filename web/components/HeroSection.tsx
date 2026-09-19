@@ -23,33 +23,14 @@ export default function HeroSection() {
     <section className="relative h-screen min-h-[640px] overflow-hidden">
       <ScrubVideo />
 
-      {/* Smoked glass over the video: the readout sits behind a bezel. */}
-      <div
-        aria-hidden="true"
-        className="absolute inset-0 z-[1]"
-        style={{
-          background:
-            'linear-gradient(to right, var(--color-glass) 0%, rgba(7,16,20,0.82) 38%, rgba(7,16,20,0.25) 100%)',
-        }}
-      />
-      <div
-        aria-hidden="true"
-        className="absolute inset-0 z-[1]"
-        style={{
-          background:
-            'linear-gradient(to top, var(--color-glass) 0%, rgba(7,16,20,0.4) 42%, transparent 70%)',
-        }}
-      />
-      <div aria-hidden="true" className="scanlines absolute inset-0 z-[2] opacity-60" />
-
-      <div className="relative z-[3] flex h-full flex-col justify-end px-5 pb-14 sm:px-8 md:justify-center md:px-12 md:pb-0">
-        <div className="max-w-2xl">
-          {/* Out-of-focus, the way a readout looks before your eyes adjust. */}
+      <div className="relative z-[3] flex h-full flex-col justify-end px-5 pb-16 sm:px-8 md:justify-center md:px-12 md:pb-0">
+        <div className="max-w-[46rem]">
+          {/* Out of focus, the way a readout looks before your eyes adjust. */}
           <p
             aria-hidden="true"
-            className="mb-5 select-none text-phosphor-dim sm:mb-6"
+            className="mb-6 select-none text-ink-muted"
             style={{
-              fontSize: 'clamp(18px, 4vw, 26px)',
+              fontSize: 'clamp(18px, 2.6vw, 28px)',
               lineHeight: 1.3,
               filter: 'blur(4px)',
             }}
@@ -60,17 +41,17 @@ export default function HeroSection() {
           </p>
 
           {/*
-            The device's own line is the page heading — it is the primary
-            statement here, and it keeps a real visible h1 on the route.
-            The full sentence is exposed to assistive tech immediately;
-            the character-by-character reveal and cursor are decoration.
+            The device's own line is the page heading. The full sentence is
+            exposed to assistive tech immediately; the character-by-character
+            reveal and cursor are decoration.
           */}
           <h1
-            className="mb-6 font-normal text-phosphor font-[family-name:var(--font-readout)]"
+            className="mb-7 font-normal text-ink"
             style={{
-              fontSize: 'clamp(18px, 4vw, 26px)',
-              lineHeight: 1.35,
-              minHeight: 'calc(2 * 1.35em)',
+              fontSize: 'clamp(20px, 2.6vw, 30px)',
+              lineHeight: 1.3,
+              letterSpacing: '-0.01em',
+              minHeight: 'calc(2 * 1.3em)',
             }}
           >
             <span className="sr-only">{LINE}</span>
@@ -78,17 +59,17 @@ export default function HeroSection() {
             {!done && (
               <span
                 aria-hidden="true"
-                className="cursor-blink ml-[2px] inline-block h-[1.1em] w-[2px] align-middle bg-phosphor"
+                className="cursor-blink ml-[2px] inline-block h-[1em] w-[2px] align-middle bg-ink"
               />
             )}
           </h1>
 
-          <div className={`flex flex-wrap gap-y-1 rise ${pillsIn ? 'rise-in' : ''}`}>
+          <div className={`flex flex-wrap rise ${pillsIn ? 'rise-in' : ''}`}>
             <Pill href="/agent">Watch a device get paid</Pill>
             <Pill href="/devices">Browse the fleet</Pill>
             <Pill href="/protocol">Read the protocol</Pill>
             <Pill href="/ledger">See what settled</Pill>
-            <CopyPill value="hello@vendx.dev" label="hello@vendx.dev" />
+            <CopyPill prefix="Reach us:" value="hello@vendx.dev" label="hello@vendx.dev" />
           </div>
         </div>
       </div>

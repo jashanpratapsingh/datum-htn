@@ -13,14 +13,14 @@ function SaleRow({ sale }: { sale: SaleEntry }) {
       <div className="flex min-w-0 flex-1 items-center gap-3">
         <SourceBadge source={sale.source} />
         <div className="min-w-0">
-          <p className="readout truncate text-xs text-phosphor">{sale.deviceId}</p>
-          <p className="readout truncate text-[11px] text-phosphor-dim" title={sale.signature}>
+          <p className="readout truncate text-xs text-ink">{sale.deviceId}</p>
+          <p className="readout truncate text-[11px] text-ink-muted" title={sale.signature}>
             {sale.description} · {sale.signature.slice(0, 14)}…
           </p>
         </div>
       </div>
-      <div className="readout text-right text-sm text-amber">{usd(sale.amount)}</div>
-      <div className="readout w-20 text-right text-xs text-phosphor-dim">
+      <div className="readout text-right text-sm text-ink">{usd(sale.amount)}</div>
+      <div className="readout w-20 text-right text-xs text-ink-muted">
         {new Date(sale.timestamp * 1000).toLocaleTimeString()}
       </div>
     </li>
@@ -42,8 +42,8 @@ export default async function MarketplacePage() {
         <RelayOffline path="/api/sales" reason={result.reason} />
       ) : n === 0 ? (
         <Panel label="Sales">
-          <p className="readout px-4 py-12 text-center text-sm text-phosphor-dim">
-            Nothing sold yet. Run <span className="text-phosphor">npm run demo</span> to make a sale.
+          <p className="readout px-4 py-12 text-center text-sm text-ink-muted">
+            Nothing sold yet. Run <span className="text-ink">npm run demo</span> to make a sale.
           </p>
         </Panel>
       ) : (

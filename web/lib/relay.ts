@@ -41,6 +41,8 @@ export interface DeviceEntry {
   lastSeen?: number;
   fsBytes?: number;
   earningsMicroUsdc?: string;
+  totalSales?: number;
+  priceUsd?: number;
 }
 
 export interface SaleEntry {
@@ -158,6 +160,8 @@ export async function fetchDevices(): Promise<RelayResult<DeviceEntry[]>> {
       largestBlock: d.largestBlock ?? undefined,
       lastSeen: d.lastSeen,
       earningsMicroUsdc: d.totalEarnedMicroUsdc,
+      totalSales: d.totalSales,
+      priceUsd: d.priceUsd,
     })),
   );
 }

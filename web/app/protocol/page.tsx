@@ -8,7 +8,7 @@ function Field({ label, value, money = false }: { label: string; value: React.Re
   return (
     <div className="px-4 py-3">
       <div className="plate mb-1">{label}</div>
-      <div className={`readout break-all text-sm ${money ? 'text-amber' : 'text-phosphor/85'}`}>{value}</div>
+      <div className={`readout break-all text-sm ${money ? 'text-ink' : 'text-ink/85'}`}>{value}</div>
     </div>
   );
 }
@@ -42,7 +42,7 @@ function ChallengeDecoded({ challenge }: { challenge: PaymentRequiredBody }) {
         </Grid>
       </Panel>
       <Panel label="Raw">
-        <pre className="readout overflow-x-auto whitespace-pre-wrap break-all px-4 py-4 text-[11px] leading-relaxed text-phosphor-dim">
+        <pre className="readout overflow-x-auto whitespace-pre-wrap break-all px-4 py-4 text-[11px] leading-relaxed text-ink-muted">
           {JSON.stringify(challenge, null, 2)}
         </pre>
       </Panel>
@@ -58,8 +58,8 @@ function Step({ title, badge, children }: { title: string; badge: string; childr
   return (
     <section className="flex flex-col gap-4">
       <div className="flex items-baseline gap-3 border-b border-rule pb-3">
-        <span className="readout text-xs text-amber">{badge}</span>
-        <h2 className="text-xl text-phosphor">{title}</h2>
+        <span className="readout text-xs text-ink">{badge}</span>
+        <h2 className="text-xl text-ink">{title}</h2>
       </div>
       {children}
     </section>
@@ -67,7 +67,7 @@ function Step({ title, badge, children }: { title: string; badge: string; childr
 }
 
 const Code = ({ children }: { children: React.ReactNode }) => (
-  <pre className="readout whitespace-pre-wrap break-all px-4 py-4 text-[12px] leading-relaxed text-phosphor/85">{children}</pre>
+  <pre className="readout whitespace-pre-wrap break-all px-4 py-4 text-[12px] leading-relaxed text-ink/85">{children}</pre>
 );
 
 const CHECKS: [string, string][] = [
@@ -93,15 +93,15 @@ export default async function ProtocolPage() {
     >
       <div className="flex flex-col gap-14">
         <Step title="The device says what it costs" badge="Step 1">
-          <p className="max-w-2xl text-[15px] leading-relaxed text-phosphor/80">
+          <p className="max-w-2xl text-[15px] leading-relaxed text-ink/80">
             The 402 advertises what is for sale and the price. The nonce is single-use — a fresh one
-            is minted per request and must be spent before <span className="readout text-phosphor">expiresAt</span>.
+            is minted per request and must be spent before <span className="readout text-ink">expiresAt</span>.
           </p>
           {ch.ok ? (
             <ChallengeDecoded challenge={ch.data} />
           ) : (
             <Panel label={ch.reason === 'offline' ? 'no relay link' : 'challenge unavailable'}>
-              <p className="readout px-4 py-10 text-center text-sm text-phosphor-dim">
+              <p className="readout px-4 py-10 text-center text-sm text-ink-muted">
                 Start relay-proxy to fetch a live challenge.
               </p>
             </Panel>
@@ -109,7 +109,7 @@ export default async function ProtocolPage() {
         </Step>
 
         <Step title="The buyer proves it paid" badge="Step 2">
-          <p className="max-w-2xl text-[15px] leading-relaxed text-phosphor/80">
+          <p className="max-w-2xl text-[15px] leading-relaxed text-ink/80">
             Sent with the replay request as base64url of canonical JSON. The nonce echoes the challenge;
             the signature is the settled Solana transaction.
           </p>
@@ -127,7 +127,7 @@ export default async function ProtocolPage() {
         </Step>
 
         <Step title="The relay signs a receipt" badge="Step 3">
-          <p className="max-w-2xl text-[15px] leading-relaxed text-phosphor/80">
+          <p className="max-w-2xl text-[15px] leading-relaxed text-ink/80">
             The relay settles on-chain and signs a receipt with its Ed25519 key. The device holds one
             32-byte public key and verifies offline in about 40ms — no TLS, no RPC, no heap spike. The
             signature covers the base64url text exactly as transmitted, so the device never has to
@@ -146,24 +146,24 @@ export default async function ProtocolPage() {
 }`}</Code>
             <div className="panel-divide px-4 py-3">
               <div className="plate mb-1">on the wire</div>
-              <code className="readout break-all text-xs text-phosphor">X-Payment-Receipt: {'<body_b64url>.<sig_b64url>'}</code>
+              <code className="readout break-all text-xs text-ink">X-Payment-Receipt: {'<body_b64url>.<sig_b64url>'}</code>
             </div>
           </Panel>
         </Step>
 
         <Step title="What the device checks" badge="Step 4">
-          <p className="max-w-2xl text-[15px] leading-relaxed text-phosphor/80">
-            In this order. Any failure returns 402 with a specific <span className="readout text-phosphor">error</span>.
+          <p className="max-w-2xl text-[15px] leading-relaxed text-ink/80">
+            In this order. Any failure returns 402 with a specific <span className="readout text-ink">error</span>.
             Signature comes first, so nothing about live nonces leaks to anyone without a valid one.
           </p>
           <Panel label="Verification order">
             <ol>
               {CHECKS.map(([check, why], i) => (
                 <li key={check} className={`flex items-baseline gap-4 px-4 py-3 ${i > 0 ? 'panel-divide' : ''}`}>
-                  <span className="readout w-5 shrink-0 text-xs text-phosphor-dim">{i + 1}</span>
+                  <span className="readout w-5 shrink-0 text-xs text-ink-muted">{i + 1}</span>
                   <div>
-                    <code className="readout text-xs text-phosphor">{check}</code>
-                    <div className="text-xs text-phosphor-dim">{why}</div>
+                    <code className="readout text-xs text-ink">{check}</code>
+                    <div className="text-xs text-ink-muted">{why}</div>
                   </div>
                 </li>
               ))}
@@ -172,13 +172,13 @@ export default async function ProtocolPage() {
         </Step>
 
         <Step title="Every way it can fail" badge="types.ts">
-          <p className="max-w-2xl text-[15px] leading-relaxed text-phosphor/80">
-            Each reason is defined once in <span className="readout text-phosphor">packages/vendx-protocol/src/types.ts</span> and
-            mirrored in <span className="readout text-phosphor">firmware-vendor/src/verifier.cpp</span>.
+          <p className="max-w-2xl text-[15px] leading-relaxed text-ink/80">
+            Each reason is defined once in <span className="readout text-ink">packages/vendx-protocol/src/types.ts</span> and
+            mirrored in <span className="readout text-ink">firmware-vendor/src/verifier.cpp</span>.
           </p>
           <div className="flex flex-wrap gap-2">
             {FAILURES.map((f) => (
-              <code key={f} className="readout border border-rule px-2 py-1 text-xs text-phosphor/80">{f}</code>
+              <code key={f} className="readout border border-rule px-2 py-1 text-xs text-ink/80">{f}</code>
             ))}
           </div>
         </Step>

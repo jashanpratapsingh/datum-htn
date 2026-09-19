@@ -52,14 +52,14 @@ export default function NavBar() {
         <a
           href="/"
           aria-label="VENDX home"
-          className="flex items-center gap-3 text-phosphor hover:text-phosphor/75 transition-colors"
+          className="flex items-center gap-3 text-ink hover:text-ink/75 transition-colors"
         >
-          <span className="text-[21px] tracking-tight sm:text-[26px]">
-            VENDX<sup className="text-[0.5em] align-super">(R)</sup>
+          <span className="text-[21px] tracking-tight sm:text-[24px]">
+            VENDX<sup className="text-[0.5em] align-super">®</sup>
           </span>
           <span
             aria-hidden="true"
-            className="select-none text-[25px] text-phosphor/55 sm:text-[30px]"
+            className="select-none text-[25px] text-ink/55 sm:text-[30px]"
             style={{ letterSpacing: '-0.02em' }}
           >
             ✳︎
@@ -68,17 +68,24 @@ export default function NavBar() {
 
         <nav
           aria-label="Primary navigation"
-          className="hidden items-center md:flex font-[family-name:var(--font-readout)] text-[14px] text-phosphor/70"
+          className="hidden items-center gap-x-[0.45em] md:flex text-[15px] text-ink"
         >
           {LINKS.map((l, i) => (
             <span key={l.href}>
-              <a href={l.href} className="hover:text-phosphor transition-colors">
+              <a href={l.href} className="hover:text-ink-muted transition-colors">
                 {l.label}
               </a>
-              {i < LINKS.length - 1 && <span className="text-phosphor/25">, </span>}
+              {i < LINKS.length - 1 && <span className="text-ink/35">,</span>}
             </span>
           ))}
         </nav>
+
+        <a
+          href="mailto:hello@vendx.dev"
+          className="hidden text-[15px] text-ink underline underline-offset-4 decoration-ink/40 hover:decoration-ink md:inline"
+        >
+          Get in touch
+        </a>
 
         <button
           type="button"
@@ -89,17 +96,17 @@ export default function NavBar() {
           className="flex flex-col gap-[5px] p-1 md:hidden"
         >
           <span
-            className={`h-[2px] w-6 bg-phosphor transition-transform duration-300 ${
+            className={`h-[2px] w-6 bg-ink transition-transform duration-300 ${
               open ? 'translate-y-[7px] rotate-45' : ''
             }`}
           />
           <span
-            className={`h-[2px] w-6 bg-phosphor transition-opacity duration-300 ${
+            className={`h-[2px] w-6 bg-ink transition-opacity duration-300 ${
               open ? 'opacity-0' : ''
             }`}
           />
           <span
-            className={`h-[2px] w-6 bg-phosphor transition-transform duration-300 ${
+            className={`h-[2px] w-6 bg-ink transition-transform duration-300 ${
               open ? '-translate-y-[7px] -rotate-45' : ''
             }`}
           />
@@ -118,7 +125,7 @@ export default function NavBar() {
           role="dialog"
           aria-modal="true"
           aria-label="Navigation menu"
-          className="fixed inset-0 z-[60] flex flex-col justify-center gap-7 bg-glass/97 px-8 backdrop-blur-sm md:hidden"
+          className="fixed inset-0 z-[60] flex flex-col justify-center gap-7 bg-canvas/97 px-8 backdrop-blur-sm md:hidden"
         >
           {LINKS.map((l, i) => (
             <a
@@ -126,7 +133,7 @@ export default function NavBar() {
               href={l.href}
               ref={i === 0 ? firstLinkRef : undefined}
               onClick={() => setOpen(false)}
-              className="text-[32px] font-medium text-phosphor hover:text-phosphor/70 transition-colors"
+              className="text-[32px] font-medium text-ink hover:text-ink/70 transition-colors"
             >
               {l.label}
             </a>
@@ -135,7 +142,7 @@ export default function NavBar() {
             type="button"
             onClick={() => setOpen(false)}
             aria-label="Close navigation menu"
-            className="mt-2 self-start font-[family-name:var(--font-readout)] text-[15px] text-phosphor/60 underline underline-offset-4 hover:text-phosphor"
+            className="mt-2 self-start text-[15px] text-ink/60 underline underline-offset-4 hover:text-ink"
           >
             Close
           </button>

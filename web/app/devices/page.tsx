@@ -10,13 +10,13 @@ const HEAP_TOTAL = 327_680;
 function HeapBar({ free, largest }: { free?: number; largest?: number }) {
   const pct = free ? Math.round((free / HEAP_TOTAL) * 100) : 0;
   // Heap is not money, so it never goes amber — it dims, then alarms.
-  const tone = pct > 30 ? 'bg-phosphor' : pct > 15 ? 'bg-phosphor-dim' : 'bg-alarm';
+  const tone = pct > 30 ? 'bg-ink' : pct > 15 ? 'bg-ink-muted' : 'bg-alarm';
   return (
     <div className="flex items-center gap-2">
       <div className="h-1 w-20 overflow-hidden bg-rule">
         <div className={`h-full ${tone}`} style={{ width: `${pct}%` }} />
       </div>
-      <span className="readout text-[11px] text-phosphor-dim">
+      <span className="readout text-[11px] text-ink-muted">
         {free != null ? `${Math.round(free / 1024)}K` : '—'}
         {largest != null ? ` / ${Math.round(largest / 1024)}K` : ''}
       </span>
@@ -35,7 +35,7 @@ function DeviceRow({ device }: { device: DeviceEntry }) {
   return (
     <a
       href={`/devices/${encodeURIComponent(device.id)}`}
-      className="group block panel-divide px-4 py-4 transition-colors hover:bg-glass-deep"
+      className="group block panel-divide px-4 py-4 transition-colors hover:bg-canvas"
     >
       <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
         <div className="min-w-0 flex-1">
@@ -43,13 +43,13 @@ function DeviceRow({ device }: { device: DeviceEntry }) {
             <SourceBadge source={device.source} />
             {device.chip && <span className="plate">{device.chip}</span>}
           </div>
-          <p className="readout truncate text-sm text-phosphor group-hover:bloom">{device.id}</p>
+          <p className="readout truncate text-sm text-ink group-hover:">{device.id}</p>
         </div>
         <div className="text-right">
           <div className="plate mb-1">earned</div>
-          <div className="readout bloom-amber text-xl leading-none text-amber">
+          <div className="readout  text-xl leading-none text-ink">
             {earned.toFixed(4)}
-            <span className="ml-1 text-[0.5em] text-phosphor-dim">USDC</span>
+            <span className="ml-1 text-[0.5em] text-ink-muted">USDC</span>
           </div>
         </div>
       </div>
@@ -61,17 +61,17 @@ function DeviceRow({ device }: { device: DeviceEntry }) {
         </div>
         <div>
           <dt className="plate mb-1">boots</dt>
-          <dd className="readout text-sm text-phosphor/80">{device.bootCount ?? '—'}</dd>
+          <dd className="readout text-sm text-ink/80">{device.bootCount ?? '—'}</dd>
         </div>
         <div>
           <dt className="plate mb-1">top reset</dt>
-          <dd className="readout text-sm text-phosphor/80">
+          <dd className="readout text-sm text-ink/80">
             {topReset ? `#${topReset[0]} ×${topReset[1]}` : '—'}
           </dd>
         </div>
         <div>
           <dt className="plate mb-1">last seen</dt>
-          <dd className="readout text-sm text-phosphor/80">
+          <dd className="readout text-sm text-ink/80">
             {lastSeen ? lastSeen.toLocaleTimeString() : '—'}
           </dd>
         </div>
@@ -94,7 +94,7 @@ export default async function DevicesPage() {
         <RelayOffline path="/api/devices" reason={result.reason} />
       ) : result.data.length === 0 ? (
         <Panel label="Fleet">
-          <p className="readout px-4 py-12 text-center text-sm text-phosphor-dim">
+          <p className="readout px-4 py-12 text-center text-sm text-ink-muted">
             No devices registered. Start relay-proxy to register one.
           </p>
         </Panel>

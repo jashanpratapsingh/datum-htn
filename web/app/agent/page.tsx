@@ -37,13 +37,13 @@ const STEPS: HandshakeStep[] = [
   { label: 'Telemetry dispensed', detail: 'source=badge or simulator', party: 'device' },
 ];
 
-// All four from the palette. Amber is reserved for money, and the chain step
-// is the one where money actually moves, so it is the only amber party.
+// Four greys from the same ink. The chain step is where money actually
+// moves, so it is the one party drawn in full ink.
 const PARTY_COLORS: Record<HandshakeStep['party'], string> = {
-  agent: '#4a8f86',   // phosphor, dimmed
-  device: '#7ff3e0',  // phosphor
-  chain: '#ffb642',   // amber — money moves here
-  policy: '#e6e1d3',  // paper
+  agent: '#5e5a54',
+  device: '#8a857d',
+  chain: '#141414',
+  policy: '#b3ada4',
 };
 
 const PARTY_LABELS: Record<HandshakeStep['party'], string> = {
@@ -88,7 +88,7 @@ function StepDot({ status, color }: { status: StepStatus; color: string }) {
         style={{ backgroundColor: color }}
         aria-hidden="true"
       >
-        <CheckCircle size={14} color="#071014" />
+        <CheckCircle size={14} color="#e4e0d8" />
       </span>
     );
   }
@@ -102,7 +102,7 @@ function StepDot({ status, color }: { status: StepStatus; color: string }) {
   return (
     <span
       className="flex items-center justify-center w-7 h-7 rounded-full border-2"
-      style={{ borderColor: '#1d3a3a' }}
+      style={{ borderColor: '#cdc8bf' }}
       aria-hidden="true"
     />
   );
@@ -223,7 +223,7 @@ export default function AgentPage() {
   const hasStarted = statuses.some((s) => s !== 'idle');
 
   return (
-    <main className="min-h-screen bg-glass">
+    <main className="min-h-screen bg-canvas">
       <NavBar />
       <div className="mx-auto max-w-6xl px-5 pb-24 pt-28 sm:px-8 md:px-12">
         <PanelHeader
@@ -242,14 +242,14 @@ export default function AgentPage() {
               <button
                 onClick={run}
                 disabled={running}
-                className="readout inline-flex items-center gap-2.5 rounded-full border border-phosphor bg-phosphor px-7 py-3 text-sm text-glass transition-colors duration-150 hover:bg-transparent hover:text-phosphor disabled:cursor-not-allowed disabled:opacity-50"
+                className="readout inline-flex items-center gap-2.5 rounded-full border border-ink bg-ink px-7 py-3 text-sm text-canvas transition-colors duration-150 hover:bg-transparent hover:text-ink disabled:cursor-not-allowed disabled:opacity-50"
                 aria-label={running ? 'Handshake running' : 'Run handshake'}
               >
                 <Play size={13} aria-hidden="true" />
                 {running ? 'Running…' : 'Run handshake'}
               </button>
               {hasStarted && (
-                <span className="readout text-xs text-phosphor-dim">
+                <span className="readout text-xs text-ink-muted">
                   {doneCount}/{STEPS.length} steps
                 </span>
               )}
@@ -288,7 +288,7 @@ export default function AgentPage() {
                         <div
                           className="w-px flex-1 min-h-[1.75rem] mt-1 transition-colors duration-500"
                           style={{
-                            backgroundColor: isDone ? `${color}66` : '#1d3a3a',
+                            backgroundColor: isDone ? `${color}66` : '#cdc8bf',
                           }}
                         />
                       )}
@@ -304,7 +304,7 @@ export default function AgentPage() {
                         <span
                           className="text-[15px] leading-snug transition-colors duration-200"
                           style={{
-                            color: isActive ? color : isDone ? '#7ff3e0' : statuses[i] === 'error' ? '#ff6b5a' : '#4a8f86',
+                            color: isActive ? color : isDone ? '#141414' : statuses[i] === 'error' ? '#b93a2e' : '#5e5a54',
                           }}
                         >
                           {step.label}
@@ -316,7 +316,7 @@ export default function AgentPage() {
                           {PARTY_LABELS[step.party]}
                         </span>
                       </div>
-                      <p className="readout text-[11px] text-phosphor-dim">
+                      <p className="readout text-[11px] text-ink-muted">
                         {details[i] ?? step.detail}
                       </p>
                     </div>
@@ -335,22 +335,22 @@ export default function AgentPage() {
                 <div className="grid grid-cols-2">
                   <div className="px-4 py-3.5">
                     <div className="plate mb-1">price</div>
-                    <div className="readout bloom-amber text-2xl leading-none text-amber">
+                    <div className="readout  text-2xl leading-none text-ink">
                       {microToUsd(challenge.accepts[0]?.maxAmountRequired ?? '0')}
-                      <span className="ml-1 text-[0.45em] text-phosphor-dim">USDC</span>
+                      <span className="ml-1 text-[0.45em] text-ink-muted">USDC</span>
                     </div>
                   </div>
                   <div className="panel-divide-x px-4 py-3.5">
                     <div className="plate mb-1">network</div>
-                    <div className="readout text-sm text-phosphor/85">{challenge.accepts[0]?.network}</div>
+                    <div className="readout text-sm text-ink/85">{challenge.accepts[0]?.network}</div>
                   </div>
                   <div className="panel-divide col-span-2 px-4 py-3.5">
                     <div className="plate mb-1">resource</div>
-                    <div className="readout break-all text-sm text-phosphor/85">{challenge.accepts[0]?.resource}</div>
+                    <div className="readout break-all text-sm text-ink/85">{challenge.accepts[0]?.resource}</div>
                   </div>
                   <div className="panel-divide px-4 py-3.5">
                     <div className="plate mb-1">expires in</div>
-                    <div className="readout text-sm text-phosphor">
+                    <div className="readout text-sm text-ink">
                       {Math.max(0, challenge.expiresAt - Math.floor(Date.now() / 1000))}s
                     </div>
                   </div>
@@ -365,7 +365,7 @@ export default function AgentPage() {
                 stamp={typeof telemetry.source === 'string' ? <SourceBadge source={telemetry.source as 'badge' | 'simulator'} /> : undefined}
                 live
               >
-                <pre className="readout max-h-64 overflow-x-auto whitespace-pre-wrap break-all px-4 py-4 text-[11px] leading-relaxed text-phosphor/80">
+                <pre className="readout max-h-64 overflow-x-auto whitespace-pre-wrap break-all px-4 py-4 text-[11px] leading-relaxed text-ink/80">
                   {JSON.stringify(telemetry, null, 2)}
                 </pre>
               </Panel>
@@ -375,8 +375,8 @@ export default function AgentPage() {
             {!challenge && !telemetry && !error && (
               <Panel label="Readout">
                 <div className="flex min-h-[220px] flex-col justify-center px-4 py-8">
-                  <p className="readout mb-1 text-sm text-phosphor-dim">Run the handshake to see live data here.</p>
-                  <p className="text-xs text-phosphor-dim/70">
+                  <p className="readout mb-1 text-sm text-ink-muted">Run the handshake to see live data here.</p>
+                  <p className="text-xs text-ink-muted/70">
                     The 402 challenge and the telemetry payload appear as each call completes.
                   </p>
                 </div>

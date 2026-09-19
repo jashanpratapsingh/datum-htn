@@ -87,8 +87,18 @@ export default function ScrubVideo() {
       playsInline
       preload="auto"
       aria-hidden="true"
-      className="fixed inset-0 z-0 h-full w-full object-cover"
-      style={{ objectPosition: '70% center', opacity: 0.38 }}
+      className="absolute inset-0 z-0 h-full w-full object-cover"
+      style={{
+        objectPosition: '78% center',
+        // The subject sits on the right, the sentence on the left. Fade the
+        // clip into the canvas so the two never fight for the same pixels.
+        maskImage:
+          'linear-gradient(to right, transparent 22%, #000 58%), linear-gradient(to top, transparent 0%, #000 42%)',
+        WebkitMaskImage:
+          'linear-gradient(to right, transparent 22%, #000 58%), linear-gradient(to top, transparent 0%, #000 42%)',
+        maskComposite: 'intersect',
+        WebkitMaskComposite: 'source-in',
+      }}
     />
   );
 }
