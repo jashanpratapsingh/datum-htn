@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import ScrubVideo from './ScrubVideo';
 import { Pill, CopyPill } from './Pill';
+import EconomicsPopup from './EconomicsPopup';
 import { useTypewriter } from './useTypewriter';
 
 const LINE =
@@ -69,6 +70,7 @@ export default function HeroSection() {
             <Pill href="/devices">Browse the fleet</Pill>
             <Pill href="/protocol">Read the protocol</Pill>
             <Pill href="/ledger">See what settled</Pill>
+            <EconomicsPopup />
             <CopyPill prefix="Reach us:" value="hello@vendx.dev" label="hello@vendx.dev" />
           </div>
         </div>

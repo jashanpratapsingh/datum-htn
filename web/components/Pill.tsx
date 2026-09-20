@@ -16,6 +16,32 @@ export function Pill({ href, children }: { href: string; children: React.ReactNo
   );
 }
 
+/** The same white pill, as a button. For the one pill that opens something instead of going somewhere. */
+export function PillButton({
+  ref,
+  onClick,
+  children,
+  ...aria
+}: {
+  ref?: React.Ref<HTMLButtonElement>;
+  onClick: () => void;
+  children: React.ReactNode;
+  'aria-haspopup'?: 'dialog';
+  'aria-expanded'?: boolean;
+}) {
+  return (
+    <button
+      ref={ref}
+      type="button"
+      onClick={onClick}
+      className={`${base} bg-pill text-ink hover:bg-ink hover:text-pill`}
+      {...aria}
+    >
+      {children}
+    </button>
+  );
+}
+
 /**
  * Outlined pill that copies a value.
  *
