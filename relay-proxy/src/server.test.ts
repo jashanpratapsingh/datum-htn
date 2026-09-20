@@ -10,6 +10,7 @@ import assert from 'node:assert/strict';
 import type { AddressInfo } from 'node:net';
 import { createRelayServer } from './server.js';
 import { VENDOR_WALLET } from './simulator.js';
+import { _resetNodes } from './node-registry.js';
 import { signReceipt, encodeReceipt } from '@vendx/protocol';
 import nacl from 'tweetnacl';
 
@@ -371,4 +372,121 @@ test('GET /api/screen without VENDX_ALLOW_SCREEN → 404 { error: screen_capture
   } finally {
     if (savedEnv !== undefined) process.env.VENDX_ALLOW_SCREEN = savedEnv;
   }
+});
+
+// ---------------------------------------------------------------------------
+// Node registration (an ESP32 running firmware-vendor, minting its own nonces)
+// ---------------------------------------------------------------------------
+
+const NODE_ID = 'vendx-esp32c3-test';
+const NODE_WALLET = '3Tm2aUwZdrhuAY37k8q4oqLgjGkYaejVbCoyCaCCwXdp';
+/** What firmware-vendor/src/main.cpp registerWithRelay() posts. The url is unreachable on purpose. */
+const registration = (over: Record<string, unknown> = {}) =>
+  JSON.stringify({
+    deviceId: NODE_ID, source: 'esp32c3', chip: 'ESP32-C3', url: 'http://127.0.0.1:9', mdns: `${NODE_ID}.local`,
+    resource: '/api/telemetry', payTo: NODE_WALLET, priceMicroUsdc: '10000', network: 'solana-devnet',
+    heartbeatSec: 60, freeHeap: 70000, largestBlock: 60000, uptime: 12, firmware: 'vendx-node test', ...over,
+  });
+/** 32 lowercase hex chars, like vendx::issueNonce(). */
+const nodeNonce = () => Array.from(nacl.randomBytes(16), (b) => b.toString(16).padStart(2, '0')).join('');
+
+test('POST /api/nodes/register → 200 and the node appears in /api/devices as source esp32c3', async () => {
+  _resetNodes();
+  const r = await post('/api/nodes/register', registration());
+  assert.equal(r.status, 200);
+  const body = (await r.json()) as { ok: boolean; deviceId: string; registered: string; heartbeatSec: number };
+  assert.equal(body.ok, true);
+  assert.equal(body.deviceId, NODE_ID);
+  assert.equal(body.registered, 'new');
+  assert.equal(body.heartbeatSec, 60);
+
+  const again = (await (await post('/api/nodes/heartbeat', registration())).json()) as { registered: string };
+  assert.equal(again.registered, 'refreshed');
+
+  const devices = (await (await get('/api/devices')).json()) as {
+    devices: Array<{ id: string; source: string; url?: string; payTo?: string; nodeState?: string; priceUsd: number }>;
+  };
+  const node = devices.devices.find((d) => d.id === NODE_ID);
+  assert.ok(node, 'node listed in the fleet');
+  assert.equal(node.source, 'esp32c3');
+  assert.equal(node.url, 'http://127.0.0.1:9');
+  assert.equal(node.payTo, NODE_WALLET);
+  assert.equal(node.nodeState, 'live');
+  assert.equal(node.priceUsd, 0.01);
+  // The simulator/badge device is still first.
+  assert.notEqual(devices.devices[0].source, 'esp32c3');
+
+  const detail = (await (await get(`/api/devices/${NODE_ID}`)).json()) as { device: { deviceId: string; source: string; heartbeats: number } };
+  assert.equal(detail.device.deviceId, NODE_ID);
+  assert.equal(detail.device.source, 'esp32c3');
+  assert.equal(detail.device.heartbeats, 2);
+});
+
+test('POST /api/nodes/register rejects a registration without a wallet, price or http url', async () => {
+  for (const bad of [{ payTo: 'not-a-wallet' }, { priceMicroUsdc: '0' }, { url: 'https://node.local' }, { source: 'simulator' }]) {
+    const r = await post('/api/nodes/register', registration(bad));
+    assert.equal(r.status, 400, JSON.stringify(bad));
+    assert.equal(((await r.json()) as { error: string }).error, 'bad_registration');
+  }
+});
+
+test('/settle signs for a registered node\'s own nonce, over the REGISTERED payTo and price, and records an esp32c3 sale', async () => {
+  _resetNodes();
+  assert.equal((await post('/api/nodes/register', registration())).status, 200);
+  const nonce = nodeNonce();
+  const r = await post('/settle', JSON.stringify({
+    nonce, txSignature: `SimTx_node_${nonce}`, payTo: NODE_WALLET, amount: '10000', network: 'solana-devnet', deviceId: NODE_ID,
+  }));
+  assert.equal(r.status, 200);
+  const { receipt } = (await r.json()) as { receipt: string };
+  const [b64] = receipt.split('.');
+  const body = JSON.parse(Buffer.from(b64, 'base64url').toString()) as { nonce: string; payTo: string; amount: string };
+  assert.equal(body.nonce, nonce);
+  assert.equal(body.payTo, NODE_WALLET);
+  assert.equal(body.amount, '10000');
+
+  const sales = (await (await get('/api/sales')).json()) as { sales: Array<{ nonce: string; source: string; deviceId?: string }> };
+  const sale = sales.sales.find((s) => s.nonce === nonce);
+  assert.ok(sale);
+  assert.equal(sale.source, 'esp32c3');
+  assert.equal(sale.deviceId, NODE_ID);
+
+  // The relay's own device must not accept a node receipt: the nonce is not in
+  // its store, and the payTo is the node's wallet, not (necessarily) its own.
+  // Either check may fire first; both are a refusal.
+  const r2 = await get('/api/telemetry', { 'X-Payment-Receipt': receipt });
+  assert.equal(r2.status, 402);
+  assert.ok(['nonce_unknown', 'wrong_recipient'].includes(((await r2.json()) as { error: string }).error));
+
+  // One receipt per node nonce, even with a fresh transaction.
+  const dup = await post('/settle', JSON.stringify({
+    nonce, txSignature: `SimTx_node_dup_${nonce}`, payTo: NODE_WALLET, amount: '10000', network: 'solana-devnet', deviceId: NODE_ID,
+  }));
+  assert.equal(dup.status, 402);
+  assert.equal(((await dup.json()) as { errorReason: string }).errorReason, 'nonce_replayed');
+});
+
+test('/settle refuses a node nonce that underpays the registered price or names the wrong wallet', async () => {
+  _resetNodes();
+  assert.equal((await post('/api/nodes/register', registration())).status, 200);
+  const under = await post('/settle', JSON.stringify({
+    nonce: nodeNonce(), txSignature: 'SimTx_node_under', payTo: NODE_WALLET, amount: '100', network: 'solana-devnet', deviceId: NODE_ID,
+  }));
+  assert.equal(under.status, 402);
+  assert.equal(((await under.json()) as { errorReason: string }).errorReason, 'insufficient_amount');
+
+  const wrong = await post('/settle', JSON.stringify({
+    nonce: nodeNonce(), txSignature: 'SimTx_node_wrong', payTo: VENDOR_WALLET === NODE_WALLET ? 'FHcgXc3YzNnq8WKcH8GaDvbKhJ4ycKxHnR7jzA8zAHU' : VENDOR_WALLET,
+    amount: '10000', network: 'solana-devnet', deviceId: NODE_ID,
+  }));
+  assert.equal(wrong.status, 402);
+  assert.equal(((await wrong.json()) as { errorReason: string }).errorReason, 'wrong_recipient');
+
+  // An unregistered device id is still an unknown nonce.
+  const ghost = await post('/settle', JSON.stringify({
+    nonce: nodeNonce(), txSignature: 'SimTx_node_ghost', payTo: NODE_WALLET, amount: '10000', network: 'solana-devnet', deviceId: 'vendx-esp32c3-ghost',
+  }));
+  assert.equal(ghost.status, 402);
+  assert.equal(((await ghost.json()) as { errorReason: string }).errorReason, 'nonce_unknown');
+  _resetNodes();
 });

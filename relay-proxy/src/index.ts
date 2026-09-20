@@ -14,7 +14,7 @@ console.log(`[relay-proxy] facilitator pubkey: ${pubHex}`);
 const server = createRelayServer(PORT);
 server.listen(PORT, () => {
   console.log(`[relay-proxy] listening on http://localhost:${PORT}`);
-  console.log('[relay-proxy] routes: GET /api/telemetry  POST /settle  GET /health');
+  console.log('[relay-proxy] routes: GET /api/telemetry  POST /settle  GET /health  POST /api/nodes/register  GET /api/nodes');
   // Mirrors /health. The poller re-checks the port on every refresh, so a badge
   // plugged in later is picked up without a restart.
   console.log(`[relay-proxy] vendor wallet: ${VENDOR_WALLET}${process.env.VENDX_VENDOR_WALLET ? '' : ' (PLACEHOLDER — set VENDX_VENDOR_WALLET)'}`);

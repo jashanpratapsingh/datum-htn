@@ -85,7 +85,9 @@ function DeviceRow({ device }: { device: DeviceEntry }) {
 const Legend = () => (
   <span className="flex items-center gap-3">
     <SourceBadge source="badge" />
-    <span className="normal-case tracking-normal">= real hardware</span>
+    <span className="normal-case tracking-normal">= badge via relay</span>
+    <SourceBadge source="esp32c3" />
+    <span className="normal-case tracking-normal">= VENDX node</span>
     <SourceBadge source="simulator" />
     <span className="normal-case tracking-normal">= software mock</span>
   </span>

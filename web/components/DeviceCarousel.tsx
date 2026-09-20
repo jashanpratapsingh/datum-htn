@@ -13,6 +13,7 @@ import type { DeviceEntry } from '@/lib/relay';
 
 const AVATAR: Record<DeviceEntry['source'], string> = {
   badge: 'https://images.unsplash.com/photo-1518770660439-4636190af475?w=300&q=80',
+  esp32c3: 'https://images.unsplash.com/photo-1518770660439-4636190af475?w=300&q=80',
   simulator: 'https://images.unsplash.com/photo-1518770660439-4636190af475?w=300&q=80',
 };
 
@@ -34,7 +35,10 @@ function sentence(d: DeviceEntry): string {
 }
 
 function designation(d: DeviceEntry): string {
-  const what = d.source === 'badge' ? 'ESP32-C3 badge' : 'simulated device';
+  const what =
+    d.source === 'badge' ? 'ESP32-C3 badge'
+    : d.source === 'esp32c3' ? `VENDX node${d.nodeState && d.nodeState !== 'live' ? ` (${d.nodeState})` : ''}`
+    : 'simulated device';
   const base = d.chip ? `${what}, ${d.chip}` : what;
   return MULTI_RELAY ? `${base} · via ${d.relay.label}` : base;
 }

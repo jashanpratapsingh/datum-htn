@@ -22,11 +22,15 @@ import { FAKE_PAYMENT, mockSolanaTxSig, payUsdc } from '../dist/wallet.js';
  * Buy one telemetry reading from a VENDX vendor.
  *
  * @param {object} opts
- * @param {string} opts.baseUrl               Vendor base URL, e.g. http://localhost:3402
+ * @param {string} opts.baseUrl               Vendor base URL, e.g. http://localhost:3402 (the relay's
+ *                                            simulator) or http://vendx-esp32c3-6e94.local (a node)
+ * @param {string} [opts.facilitatorUrl]      Where to POST /settle. Default: the URL the vendor names
+ *                                            in its challenge (`extra.facilitator`), else `baseUrl`.
+ *                                            A node cannot settle for itself; the relay does it.
  * @param {bigint} [opts.spendLimitMicroUsdc] Max spend per call (default 10 000 000 = $10)
- * @returns {Promise<{telemetry: object, paid: boolean, receipt?: string, txSignature?: string, payment?: 'solana'|'fake', explorer?: string}>}
+ * @returns {Promise<{telemetry: object, paid: boolean, receipt?: string, txSignature?: string, payment?: 'solana'|'fake', explorer?: string, facilitator?: string}>}
  */
-export async function buy({ baseUrl, spendLimitMicroUsdc = 10_000_000n }) {
+export async function buy({ baseUrl, facilitatorUrl, spendLimitMicroUsdc = 10_000_000n }) {
   const resourceUrl = `${baseUrl}/api/telemetry`;
 
   // 1. Initial request — expect 402.
@@ -57,6 +61,13 @@ export async function buy({ baseUrl, spendLimitMicroUsdc = 10_000_000n }) {
 
   console.log(`  ✓ policy  amount=${req.maxAmountRequired} µUSDC  to=${req.payTo.slice(0, 8)}…`);
 
+  // A self-serving node tells us who it is and who settles for it. The relay
+  // needs the device id to account for a nonce it did not mint itself.
+  const extra = req.extra && typeof req.extra === 'object' ? req.extra : {};
+  const deviceId = typeof extra.deviceId === 'string' ? extra.deviceId : undefined;
+  const facilitator = (facilitatorUrl ?? (typeof extra.facilitator === 'string' ? extra.facilitator : baseUrl)).replace(/\/+$/, '');
+  if (facilitator !== baseUrl) console.log(`  ✓ vendor  ${deviceId ?? '?'} (${extra.source ?? 'unknown source'}), settles at ${facilitator}`);
+
   // 4. Pay: a real, confirmed USDC transfer with the nonce in a memo.
   let txSig;
   let payment;
@@ -80,7 +91,7 @@ export async function buy({ baseUrl, spendLimitMicroUsdc = 10_000_000n }) {
   }
 
   // 5. Notify the facilitator and receive a signed receipt.
-  const settleRes = await fetch(`${baseUrl}/settle`, {
+  const settleRes = await fetch(`${facilitator}/settle`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -89,6 +100,7 @@ export async function buy({ baseUrl, spendLimitMicroUsdc = 10_000_000n }) {
       payTo: req.payTo,
       amount: req.maxAmountRequired,
       network: req.network,
+      ...(deviceId ? { deviceId } : {}),
     }),
   });
 
@@ -113,5 +125,5 @@ export async function buy({ baseUrl, spendLimitMicroUsdc = 10_000_000n }) {
   const telemetry = await res2.json();
   console.log(`  ← 200 OK`);
 
-  return { telemetry, paid: true, receipt, txSignature: txSig, payment, explorer };
+  return { telemetry, paid: true, receipt, txSignature: txSig, payment, explorer, facilitator };
 }

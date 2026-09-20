@@ -48,6 +48,14 @@ GET /api/telemetry HTTP/1.1
 The `nonce` is stored in the relay's in-process nonce store (`nonce-store.ts`)
 and burned on first use. Its TTL is 300 seconds.
 
+A VENDX node (an ESP32 running `firmware-vendor/`) serves the same challenge
+from its own `/api/telemetry`, with `payTo` = the wallet compiled into it and
+`extra` filled in so the buyer knows who minted the nonce and who can settle it:
+
+```jsonc
+"extra": { "deviceId": "vendx-esp32c3-6e94", "source": "esp32c3", "facilitator": "http://10.0.0.5:3402" }
+```
+
 Type: `PaymentRequiredBody` from `@vendx/protocol`.
 
 ### With a valid receipt — 200 OK
@@ -130,13 +138,28 @@ production deploy should call `getSignatureStatuses` before signing.
 
 ```jsonc
 {
-  "nonce": "9f2c4a1b…",              // required — must match a live challenge nonce
+  "nonce": "9f2c4a1b…",              // required — a live challenge nonce (see below)
   "txSignature": "5j7sK…",          // required — base58 Solana tx signature
   "payTo": "FHcgXc3Y…",             // optional (defaults to "")
   "amount": "100",                   // optional micro-USDC string (defaults to "0")
-  "network": "solana-devnet"         // optional (defaults to "solana-devnet")
+  "network": "solana-devnet",        // optional (defaults to "solana-devnet")
+  "deviceId": "vendx-esp32c3-6e94"   // optional — the registered node that minted the nonce
 }
 ```
+
+Which nonces the relay will settle:
+
+- **its own** — issued by this relay's `/api/telemetry` (simulator or badge);
+  the receipt is signed over the payTo/amount that were *issued*;
+- **a registered node's** — the nonce is not in the relay's store, `deviceId`
+  names a node that has posted to `/api/nodes/register` (or `payTo` maps to
+  exactly one registered node), and the nonce is 32 hex chars as the firmware
+  mints them. The receipt is signed over the node's **registered** payTo and
+  price, never the buyer's copy, and one receipt is issued per node nonce.
+  Errors specific to this path: `nonce_unknown` with `detail` naming the
+  missing node, `node_lost` (no heartbeat for 10 intervals), `wrong_network`.
+
+In `verify` mode both paths check the transaction on-chain first.
 
 **Success** `200 application/json`
 
@@ -186,10 +209,12 @@ Liveness check.
 **Response** `200 application/json`
 
 ```jsonc
-{ "status": "ok", "mode": "badge" }
+{ "status": "ok", "mode": "badge", "nodes": 1, "nodesLive": 1 }
 // or
-{ "status": "ok", "mode": "simulator" }
+{ "status": "ok", "mode": "simulator", "nodes": 0, "nodesLive": 0 }
 ```
+
+`nodes` counts registered VENDX nodes, `nodesLive` those with a recent heartbeat.
 
 `mode` reflects whether a real badge is attached at `VENDX_BADGE_PORT`. It is
 `"badge"` when `/dev/cu.usbmodem101` exists, `"simulator"` otherwise. Source:
@@ -197,9 +222,60 @@ Liveness check.
 
 ---
 
+## POST /api/nodes/register
+
+A VENDX node announcing itself (and, re-posted every `heartbeatSec`, its
+heartbeat; `POST /api/nodes/heartbeat` is an alias). Sent by
+`firmware-vendor/src/main.cpp` (`registerWithRelay`) on every station connect
+and then periodically. Registration is what lets `/settle` sign for the node's
+own nonces, so an unregistered node cannot sell.
+
+**Request** `application/json`
+
+```jsonc
+{
+  "deviceId": "vendx-esp32c3-6e94",   // required, [A-Za-z0-9._-]{3,64}
+  "source": "esp32c3",                 // required, literally "esp32c3"
+  "url": "http://10.0.0.23",           // required, http:// only — where agents reach the node
+  "payTo": "3Tm2aUwZ…",                // required, base58 wallet owner the node sells for
+  "priceMicroUsdc": "10000",           // required, > 0
+  "network": "solana-devnet",          // required, solana-devnet | solana
+  "chip": "ESP32-C3", "mdns": "vendx-esp32c3-6e94.local", "resource": "/api/telemetry",
+  "asset": "4zMM…ncDU", "heartbeatSec": 60,
+  "freeHeap": 78740, "largestBlock": 65524, "uptime": 8, "rssi": -61, "bucket": 71,
+  "firmware": "vendx-node Sep 19 2026 21:36:59", "sdk": "v5.5.1"
+}
+```
+
+**Response** `200 application/json`
+
+```jsonc
+{ "ok": true, "deviceId": "vendx-esp32c3-6e94", "registered": "new" /* or "refreshed" */,
+  "heartbeatSec": 60, "facilitator": "http://10.0.0.5:3402" }
+```
+
+**Error** `400 application/json` — `{ "ok": false, "error": "bad_registration", "detail": "<field>" }`
+or `{ "error": "bad_json" }`.
+
+After replying, the relay fetches `<url>/health` (3 s budget, off the request
+path) and records whether it answered as this device. The registry is
+in-memory: a relay restart forgets nodes until their next heartbeat.
+
+---
+
+## GET /api/nodes
+
+Registered nodes only, newest heartbeat first. Each entry is the registration
+plus `firstSeen`, `lastSeen`, `heartbeats`, `ageSeconds`, `nodeState`
+(`live` ≤ 2 heartbeats overdue, `stale` ≤ 10, else `lost`), `reachable` and
+the last `probe` result.
+
+---
+
 ## GET /api/devices
 
-Returns the device fleet (currently one device — the attached badge or simulator).
+Returns the device fleet: the attached badge or simulator first, then every
+registered node (`source: "esp32c3"`).
 
 **Response** `200 application/json`
 
@@ -220,6 +296,11 @@ Returns the device fleet (currently one device — the attached badge or simulat
 ```
 
 `freeHeap` and `largestBlock` are `null` in simulator mode (fields not present).
+
+Node entries carry the same fields plus `url`, `mdns`, `payTo`, `network`,
+`nodeState`, `reachable` and `ageSeconds`; `priceUsd` is the node's registered
+price. `GET /api/devices/:id` for a node returns the full registry entry as
+`device` and its sales (`source: "esp32c3"`, matching `deviceId`) as `recentSales`.
 
 ---
 
@@ -258,6 +339,7 @@ All in-memory settlement records (cleared on relay restart).
     "id": "<nonce>",
     "nonce": "9f2c4a1b…",
     "amountMicroUsdc": "100",
+    "deviceId": "vendx-esp32c3-6e94",   // only on sales settled for a registered node
     "timestamp": 1758240000,
     "txSignature": "SimTx1111…",
     "source": "badge"             // or "simulator"
