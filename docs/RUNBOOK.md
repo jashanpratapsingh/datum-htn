@@ -156,7 +156,8 @@ curl -s -H "x-payment-receipt: $R" localhost:3402/api/telemetry                 
 
 ## Connecting a coding agent (remote MCP server)
 
-The website IS the MCP server: `https://<site>/api/mcp` (Streamable HTTP,
+The website IS the MCP server: `https://vendx.biz/api/mcp` (the vercel.app alias
+serves the same thing; every URL below derives from the host you visit) — Streamable HTTP,
 stateless) plus its own OAuth 2.1 authorization server. `/connect` prints the
 one-liners; the flow for a buyer is:
 

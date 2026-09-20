@@ -14,7 +14,7 @@ export PATH="$HOME/.nvm/versions/node/v22.23.2/bin:$PATH"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 STATE="$HOME/.vendx"; mkdir -p "$STATE/stack"
 SESSION="${VENDX_TMUX_SESSION:-vendx}"
-PROD_URL="${VENDX_PROD_URL:-https://web-rouge-six-46.vercel.app}"
+PROD_URL="${VENDX_PROD_URL:-https://vendx.biz}"
 WEB_PORT="${PORT:-3000}"
 
 log() { printf '[stack] %s\n' "$*"; }
