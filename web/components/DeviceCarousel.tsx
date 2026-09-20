@@ -13,8 +13,8 @@ import type { DeviceEntry } from '@/lib/relay';
 
 const AVATAR: Record<DeviceEntry['source'], string> = {
   badge: 'https://images.unsplash.com/photo-1518770660439-4636190af475?w=300&q=80',
-  simulator: 'https://images.unsplash.com/photo-1518770660439-4636190af475?w=300&q=80',
   esp32c3: 'https://images.unsplash.com/photo-1518770660439-4636190af475?w=300&q=80',
+  simulator: 'https://images.unsplash.com/photo-1518770660439-4636190af475?w=300&q=80',
 };
 
 function sentence(d: DeviceEntry): string {
@@ -36,7 +36,11 @@ function sentence(d: DeviceEntry): string {
 }
 
 function designation(d: DeviceEntry): string {
-  const what = d.source === 'badge' ? 'ESP32-C3 badge' : d.source === 'esp32c3' ? 'ESP32-C3 node over WiFi' : 'simulated device';
+  const what =
+    d.source === 'badge' ? 'ESP32-C3 badge'
+    : d.source === 'esp32c3' ? `ESP32-C3 node over WiFi${d.nodeState && d.nodeState !== 'live' ? ` (${d.nodeState})` : ''}`
+    : 'simulated device';
+  // The node designation already names the chip; the badge and simulator do not.
   const withChip = d.chip && d.source !== 'esp32c3' ? `${what}, ${d.chip}` : what;
   const base = d.location ? `${withChip}, ${d.location}` : withChip;
   return MULTI_RELAY ? `${base} · via ${d.relay.label}` : base;

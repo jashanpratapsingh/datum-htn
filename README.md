@@ -75,6 +75,7 @@ No ESP32 required — `relay-proxy` ships a device simulator. With hardware:
 | [`solana-ledger/`](solana-ledger/) | Anchor program: ZK-compressed telemetry commits |
 | [`relay-proxy/`](relay-proxy/) | Public routing, facilitator, device simulator |
 | [`packages/vendx-protocol/`](packages/vendx-protocol/) | Shared wire format — the single source of truth |
+| [`packages/vendx-mcp/`](packages/vendx-mcp/) | MCP server — VENDX as tools any MCP agent can call |
 | [`web/`](web/) | Next.js marketplace frontend |
 
 ## Docs
@@ -86,6 +87,7 @@ No ESP32 required — `relay-proxy` ships a device simulator. With hardware:
 | [BADGE.md](docs/BADGE.md) | The real ESP32-C3 badge: hardware, console API, what it refuses to do |
 | [DEMO.md](docs/DEMO.md) | Three-minute demo script, with and without hardware |
 | [API.md](docs/API.md) | Relay REST endpoints |
+| [MCP.md](docs/MCP.md) | VENDX as an MCP connector — tools, setup, config |
 | [FEATURES.md](docs/FEATURES.md) | Product surface beyond the hero |
 | [FRONTEND_BRIEF.md](docs/FRONTEND_BRIEF.md) | Hero spec + VENDX re-skin |
 | [FLEET.md](docs/FLEET.md) | The tmux build fleet |
