@@ -16,6 +16,8 @@
 #include <esp_lcd_panel_ops.h>
 #include <esp_lcd_panel_vendor.h>
 #include <esp_log.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/semphr.h>
 
 #include "badge_display_font.h"
 
@@ -37,18 +39,36 @@ constexpr int kPclkHz = 40 * 1000 * 1000;
 constexpr int kScreenWidth = 320;
 constexpr int kScreenHeight = 240;
 constexpr int kGlyphSize = 8;
-constexpr int kScale = 3;
-constexpr int kLineHeight = kGlyphSize * kScale;  // 24 px
-constexpr int kStripeCount = kScreenHeight / kLineHeight;  // 10 stripes, full coverage
-constexpr int kTextStripe = kStripeCount / 2;  // one stripe above center; alignment matters more than exact centering
+// One stripe is tall enough for the biggest glyph (scale 5 = 40 px), so every
+// line of text lives inside exactly one stripe of the full-height sweep.
+constexpr int kStripeHeight = 40;
+constexpr int kStripeCount = kScreenHeight / kStripeHeight;  // 6 stripes, full coverage
+
+// Layout, top to bottom (stripe index, y offset inside the stripe, scale):
+//   "EARNED"          stripe 1, grey,   small  (16 px)
+//   "$0.0012"         stripe 2, white,  large  (40 px; 32 px when > 8 chars)
+//   "MOTION"/"NO MOTION" stripe 4, green/red, medium (24 px)
+constexpr int kCaptionStripe = 1;
+constexpr int kCaptionScale = 2;
+constexpr int kCaptionOffsetY = (kStripeHeight - kGlyphSize * kCaptionScale) / 2;
+constexpr int kEarningsStripe = 2;
+constexpr int kEarningsScaleLarge = 5;
+constexpr int kEarningsScaleSmall = 4;
+constexpr int kEarningsLargeMaxChars = kScreenWidth / (kGlyphSize * kEarningsScaleLarge);  // 8
+constexpr int kMotionStripe = 4;
+constexpr int kMotionScale = 3;
+constexpr int kMotionOffsetY = (kStripeHeight - kGlyphSize * kMotionScale) / 2;
 
 constexpr uint16_t kColorGreen = 0x07E0;
 constexpr uint16_t kColorRed = 0xF800;
+constexpr uint16_t kColorWhite = 0xFFFF;
+constexpr uint16_t kColorGrey = 0x8410;
 
 const char *kMotionLabel = "MOTION";
 const char *kIdleLabel = "NO MOTION";
+const char *kEarningsCaption = "EARNED";
 
-void draw_glyph(uint16_t *line, int x0, char c, uint16_t color) {
+void draw_glyph(uint16_t *line, int x0, int y0, char c, int scale, uint16_t color) {
   const uint8_t *glyph = badge_display_glyph(c);
   for (int row = 0; row < kGlyphSize; ++row) {
     const uint8_t bits = glyph[row];
@@ -56,16 +76,29 @@ void draw_glyph(uint16_t *line, int x0, char c, uint16_t color) {
       if ((bits & (1U << col)) == 0) {
         continue;
       }
-      for (int sy = 0; sy < kScale; ++sy) {
-        const int y = row * kScale + sy;
-        for (int sx = 0; sx < kScale; ++sx) {
-          const int x = x0 + col * kScale + sx;
+      for (int sy = 0; sy < scale; ++sy) {
+        const int y = y0 + row * scale + sy;
+        if (y < 0 || y >= kStripeHeight) {
+          continue;
+        }
+        for (int sx = 0; sx < scale; ++sx) {
+          const int x = x0 + col * scale + sx;
           if (x >= 0 && x < kScreenWidth) {
             line[y * kScreenWidth + x] = color;
           }
         }
       }
     }
+  }
+}
+
+// Centres `text` horizontally inside the current stripe buffer.
+void draw_centered(uint16_t *line, const char *text, int y0, int scale, uint16_t color) {
+  const int length = static_cast<int>(std::strlen(text));
+  const int glyph_width = kGlyphSize * scale;
+  const int x_start = (kScreenWidth - length * glyph_width) / 2;
+  for (int i = 0; i < length; ++i) {
+    draw_glyph(line, x_start + i * glyph_width, y0, text[i], scale, color);
   }
 }
 
@@ -78,11 +111,23 @@ BadgeDisplayService::~BadgeDisplayService() {
   if (panel_ != nullptr) {
     esp_lcd_panel_del(static_cast<esp_lcd_panel_handle_t>(panel_));
   }
+  if (lock_ != nullptr) {
+    vSemaphoreDelete(static_cast<SemaphoreHandle_t>(lock_));
+  }
 }
 
 bool BadgeDisplayService::setup() {
+  std::strncpy(earnings_, vendx::kEarningsUnknown, sizeof(earnings_) - 1);
+  if (lock_ == nullptr) {
+    lock_ = xSemaphoreCreateMutex();
+    if (lock_ == nullptr) {
+      ESP_LOGE(kTag, "Failed to create the display lock");
+      return false;
+    }
+  }
+
   line_buffer_ = static_cast<uint16_t *>(
-      heap_caps_malloc(static_cast<size_t>(kScreenWidth) * kLineHeight * sizeof(uint16_t), MALLOC_CAP_DMA));
+      heap_caps_malloc(static_cast<size_t>(kScreenWidth) * kStripeHeight * sizeof(uint16_t), MALLOC_CAP_DMA));
   if (line_buffer_ == nullptr) {
     ESP_LOGE(kTag, "Failed to allocate display line buffer");
     return false;
@@ -94,7 +139,7 @@ bool BadgeDisplayService::setup() {
   bus_config.sclk_io_num = kPinClk;
   bus_config.quadwp_io_num = -1;
   bus_config.quadhd_io_num = -1;
-  bus_config.max_transfer_sz = kScreenWidth * kLineHeight * static_cast<int>(sizeof(uint16_t));
+  bus_config.max_transfer_sz = kScreenWidth * kStripeHeight * static_cast<int>(sizeof(uint16_t));
   esp_err_t err = spi_bus_initialize(kSpiHost, &bus_config, SPI_DMA_CH_AUTO);
   if (err != ESP_OK) {
     ESP_LOGE(kTag, "spi_bus_initialize failed: %s", esp_err_to_name(err));
@@ -142,35 +187,65 @@ bool BadgeDisplayService::setup() {
   ESP_ERROR_CHECK(esp_lcd_panel_disp_on_off(panel_handle, true));
 
   ready_ = true;
-  redraw(false);
+  char earnings[sizeof(earnings_)];
+  copy_earnings(earnings);
+  redraw(false, earnings);
   ESP_LOGI(kTag, "Badge display ready");
   return true;
 }
 
-void BadgeDisplayService::redraw(bool motion) {
+void BadgeDisplayService::set_earnings(const char *text) {
+  if (text == nullptr) {
+    return;
+  }
+  auto *lock = static_cast<SemaphoreHandle_t>(lock_);
+  if (lock != nullptr) {
+    xSemaphoreTake(lock, portMAX_DELAY);
+  }
+  std::strncpy(earnings_, text, sizeof(earnings_) - 1);
+  earnings_[sizeof(earnings_) - 1] = '\0';
+  if (lock != nullptr) {
+    xSemaphoreGive(lock);
+  }
+}
+
+void BadgeDisplayService::copy_earnings(char *out) const {
+  auto *lock = static_cast<SemaphoreHandle_t>(lock_);
+  if (lock != nullptr) {
+    xSemaphoreTake(lock, portMAX_DELAY);
+  }
+  std::memcpy(out, earnings_, sizeof(earnings_));
+  if (lock != nullptr) {
+    xSemaphoreGive(lock);
+  }
+}
+
+void BadgeDisplayService::redraw(bool motion, const char *earnings) {
   if (!ready_) {
     return;
   }
   const char *label = motion ? kMotionLabel : kIdleLabel;
-  const uint16_t color = motion ? kColorGreen : kColorRed;
-  const int length = static_cast<int>(std::strlen(label));
-  const int glyph_width = kGlyphSize * kScale;
-  const int text_width = length * glyph_width;
-  const int x_start = (kScreenWidth - text_width) / 2;
+  const uint16_t label_color = motion ? kColorGreen : kColorRed;
+  const int earnings_scale =
+      static_cast<int>(std::strlen(earnings)) > kEarningsLargeMaxChars ? kEarningsScaleSmall : kEarningsScaleLarge;
+  const int earnings_offset_y = (kStripeHeight - kGlyphSize * earnings_scale) / 2;
 
   auto *panel_handle = static_cast<esp_lcd_panel_handle_t>(panel_);
-  const size_t stripe_bytes = static_cast<size_t>(kScreenWidth) * kLineHeight * sizeof(uint16_t);
+  const size_t stripe_bytes = static_cast<size_t>(kScreenWidth) * kStripeHeight * sizeof(uint16_t);
   for (int stripe = 0; stripe < kStripeCount; ++stripe) {
     std::memset(line_buffer_, 0, stripe_bytes);
-    if (stripe == kTextStripe) {
-      for (int i = 0; i < length; ++i) {
-        draw_glyph(line_buffer_, x_start + i * glyph_width, label[i], color);
-      }
+    if (stripe == kCaptionStripe) {
+      draw_centered(line_buffer_, kEarningsCaption, kCaptionOffsetY, kCaptionScale, kColorGrey);
+    } else if (stripe == kEarningsStripe) {
+      draw_centered(line_buffer_, earnings, earnings_offset_y, earnings_scale, kColorWhite);
+    } else if (stripe == kMotionStripe) {
+      draw_centered(line_buffer_, label, kMotionOffsetY, kMotionScale, label_color);
     }
-    const int y = stripe * kLineHeight;
-    esp_lcd_panel_draw_bitmap(panel_handle, 0, y, kScreenWidth, y + kLineHeight, line_buffer_);
+    const int y = stripe * kStripeHeight;
+    esp_lcd_panel_draw_bitmap(panel_handle, 0, y, kScreenWidth, y + kStripeHeight, line_buffer_);
   }
   last_motion_ = motion;
+  std::memcpy(shown_earnings_, earnings, sizeof(shown_earnings_));
   has_drawn_ = true;
 }
 
@@ -179,10 +254,12 @@ void BadgeDisplayService::update(const RuntimeSnapshot &snapshot) {
     return;
   }
   const bool motion_now = snapshot.ready_to_publish && snapshot.motion_state == MotionState::MOTION;
-  if (has_drawn_ && motion_now == last_motion_) {
+  char earnings[sizeof(earnings_)];
+  copy_earnings(earnings);
+  if (has_drawn_ && motion_now == last_motion_ && std::strcmp(earnings, shown_earnings_) == 0) {
     return;
   }
-  redraw(motion_now);
+  redraw(motion_now, earnings);
 }
 
 }  // namespace presence_node

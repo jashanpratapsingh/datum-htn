@@ -314,6 +314,40 @@ price. `GET /api/devices/:id` for a node returns the full registry entry as
 
 ---
 
+## GET /api/earnings
+
+One device's lifetime earnings, in the shape the ESP32 badge screens paint.
+Fleet-wide numbers stay on `/api/devices`; this exists so a device with ~150 KB
+of heap can ask one question and draw one string.
+
+**Query parameters**
+
+| Param | Meaning |
+| --- | --- |
+| `device` | Device ID. Defaults to the device agents buy from on this relay (the attached badge or the simulator). |
+| `wait` | Long-poll: hold the response up to this many seconds (capped at 30) until the total changes. |
+| `since` | The `totalEarnedMicroUsdc` the caller last saw. With `wait`, the response is released as soon as the total differs. |
+
+**Response** `200 application/json`, `Cache-Control: no-store`
+
+```jsonc
+{
+  "deviceId": "esp32-sim-001",
+  "source": "simulator",         // null when `device` is not this relay's current device
+  "totalSales": 12,
+  "totalEarnedMicroUsdc": "1200",
+  "display": "$0.0012",          // 2–6 decimals, trailing zeros trimmed; "$0.00" for no sales
+  "updatedAt": 1758240000
+}
+```
+
+Always `200`: an unknown device id answers with zeros and `"$0.00"`, and a
+long-poll that times out answers with the unchanged total, so the firmware has
+one code path. Every successful `POST /settle` releases the long-polls waiting
+on that device immediately; waiters also re-read the store every 2 s.
+
+---
+
 ## GET /api/devices/:id
 
 Single device detail with up to 50 recent sales.

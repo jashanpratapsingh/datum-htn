@@ -7,3 +7,4 @@ export * from './provenance.js';
 export * from './telemetry.js';
 export * from './vitals.js';
 export * from './wallets.js';
+export * from './usdc.js';

@@ -332,6 +332,53 @@ definitions in `packages/vendx-protocol/src/types.ts`. When you change a
 `VerifyFailure` reason code or a wire field, update both files and add a comment
 in `verifier.cpp` pointing to the TypeScript source.
 
+## Earnings on the badge screens
+
+The two badges running the presence-node (ESPectre) firmware — the disposable
+badge `e8:f6:0a:26:6e:94` and the third badge `e8:3d:c1:29:86:c0` — show three
+lines: `EARNED`, the dollar figure, and the motion state. The figure is what the
+relay has recorded for one VENDX device (`GET /api/earnings`, see docs/API.md):
+the relay keeps the books, the badge only paints them, so a reboot never loses
+or invents a sale. The badge long-polls the relay over HTTPS, so the number
+moves within about a second of a settle while making one request every ~25 s.
+
+`$--` means the relay has not answered yet (no Wi-Fi, relay down, or a relay
+build without `/api/earnings`). On errors the last figure stays on screen.
+
+The conference badge is **not** part of this: its factory firmware stays
+untouched (no reflash, `.lua` side-load is blocked, and the Lua API has no
+screen namespace), so it cannot show the number.
+
+Build-time settings (`idf.py menuconfig` → ESPectre Native Frontend → VENDX
+earnings display, or `CONFIG_VENDX_*` in the sdkconfig):
+
+| Option | Default | Meaning |
+| --- | --- | --- |
+| `VENDX_EARNINGS_ENABLED` | y | Disable to get the original MOTION / NO MOTION screen back |
+| `VENDX_RELAY_URL` | `https://relay.vendx.biz` | Relay whose books to show; plain `http://<lan-ip>:3402` also works |
+| `VENDX_DEVICE_ID` | empty | Device to show; empty follows the device agents buy from on that relay |
+| `VENDX_EARNINGS_WAIT_SEC` | 25 | Long-poll length (relay caps at 30) |
+
+Build and flash (ESP-IDF 5.5.5 at `~/esp/esp-idf`; the CLI venv lives in
+`presence-node/.venv`, create it from `presence-node/requirements.txt` with the
+system Python if missing):
+
+```sh
+cd presence-node
+./.venv/bin/python espectre native build --chip c3
+# Identify the board FIRST. Only the two MACs above may ever be written.
+./.venv/bin/python -m esptool --chip esp32c3 --port /dev/cu.usbmodem101 read-mac
+./.venv/bin/python espectre native flash --chip c3 --port /dev/cu.usbmodem101   # no erase: Wi-Fi creds survive
+./.venv/bin/python espectre monitor --chip c3 --frontend native --port /dev/cu.usbmodem101
+```
+
+Expected log lines: `espectre.badge_display: Badge display ready`, then
+`vendx.earnings: Earnings display: relay=… device=(relay default) wait=25s` and,
+once Wi-Fi is up, `vendx.earnings: Earned so far: $0.0012 (1200 micro-USDC)`.
+
+Host test for the parsing and sanitising the screen relies on:
+`presence-node/src/cpp/frontend/native/espectre/test/run.sh`.
+
 ## Vercel deploy (web)
 
 ```bash

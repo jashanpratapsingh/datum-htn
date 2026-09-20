@@ -104,6 +104,45 @@ menu "ESPectre Native Frontend"
         string "Home Assistant MQTT discovery prefix"
         default "homeassistant"
 
+    menu "VENDX earnings display"
+
+        config VENDX_EARNINGS_ENABLED
+            bool "Show what this device has earned on the badge screen"
+            default y
+            help
+                Polls the VENDX relay (GET /api/earnings, long-poll) over HTTPS
+                and paints the dollar figure above the motion state. The relay
+                keeps the books; the badge only displays them. Disable to keep
+                the original MOTION / NO MOTION screen.
+
+        config VENDX_RELAY_URL
+            string "VENDX relay base URL"
+            depends on VENDX_EARNINGS_ENABLED
+            default "https://relay.vendx.biz"
+            help
+                Scheme and host of the relay whose books to show, no trailing
+                slash. HTTPS uses the built-in certificate bundle; plain HTTP
+                works for a relay on the same LAN (http://192.168.x.y:3402).
+
+        config VENDX_DEVICE_ID
+            string "VENDX device id to show (empty = the relay's current device)"
+            depends on VENDX_EARNINGS_ENABLED
+            default ""
+            help
+                Which device's earnings this badge represents. Leave empty to
+                follow whatever device agents buy from on that relay.
+
+        config VENDX_EARNINGS_WAIT_SEC
+            int "Long-poll length (seconds)"
+            depends on VENDX_EARNINGS_ENABLED
+            range 1 30
+            default 25
+            help
+                How long one request may wait for the total to change before
+                the relay answers anyway. Fewer requests with a longer wait.
+
+    endmenu
+
     menu "Advanced task scheduling"
 
         config ESPECTRE_NATIVE_LOOP_TASK_PRIORITY

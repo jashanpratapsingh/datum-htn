@@ -13,7 +13,7 @@ import { VENDOR_WALLET } from './simulator.js';
 import { MemoryStore } from './store/index.js';
 import { hashAgentKey, AGENT_KEY_HEADER } from './agent-auth.js';
 import { _resetNodes } from './node-registry.js';
-import { signReceipt, encodeReceipt } from '@vendx/protocol';
+import { signReceipt, encodeReceipt, formatUsdDisplay } from '@vendx/protocol';
 import nacl from 'tweetnacl';
 
 // ---------------------------------------------------------------------------
@@ -582,6 +582,87 @@ test('POST /settle with the web secret + x-vendx-agent-id → sale attributed to
   } finally {
     delete process.env.VENDX_WEB_SECRET;
   }
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/earnings — what the badge screens paint
+// ---------------------------------------------------------------------------
+
+type Earnings = { deviceId: string; totalSales: number; totalEarnedMicroUsdc: string; display: string; source: string | null };
+
+let earningsSettleSeq = 0;
+/** One 402 → /settle cycle with a fresh tx signature (the relay refuses a reused one). */
+async function settleOneSale(): Promise<void> {
+  const r1 = await get('/api/telemetry');
+  assert.equal(r1.status, 402);
+  const { nonce } = (await r1.json()) as { nonce: string };
+  const r2 = await post(
+    '/settle',
+    JSON.stringify({
+      nonce,
+      txSignature: `SimTx_earnings_${Date.now()}_${earningsSettleSeq++}`,
+      payTo: VENDOR_WALLET,
+      amount: '100',
+      network: 'solana-devnet',
+    }),
+  );
+  assert.equal(r2.status, 200);
+}
+
+test('GET /api/earnings?device=<unknown> → 200 with zeros and "$0.00" (a screen never goes blank)', async () => {
+  const res = await get('/api/earnings?device=no-such-device-xyz');
+  assert.equal(res.status, 200);
+  assert.equal(res.headers.get('cache-control'), 'no-store');
+  const body = (await res.json()) as Earnings;
+  assert.equal(body.deviceId, 'no-such-device-xyz');
+  assert.equal(body.totalSales, 0);
+  assert.equal(body.totalEarnedMicroUsdc, '0');
+  assert.equal(body.display, '$0.00');
+  assert.equal(body.source, null);
+});
+
+test('GET /api/earnings defaults to the relay device and grows by one sale after /settle', async () => {
+  const before = (await (await get('/api/earnings')).json()) as Earnings;
+  assert.equal(before.deviceId, 'esp32-sim-001');
+  assert.equal(before.source, 'simulator');
+
+  await settleOneSale();
+
+  const after = (await (await get('/api/earnings')).json()) as Earnings;
+  assert.equal(after.totalSales, before.totalSales + 1);
+  assert.equal(BigInt(after.totalEarnedMicroUsdc), BigInt(before.totalEarnedMicroUsdc) + 100n);
+  assert.equal(after.display, formatUsdDisplay(after.totalEarnedMicroUsdc));
+  // Sales for other devices are not this device's earnings.
+  assert.match(after.display, /^\$\d[\d,]*\.\d{2,6}$/);
+});
+
+test('GET /api/earnings?wait= long-poll is released by a /settle within the wait', async () => {
+  const current = (await (await get('/api/earnings')).json()) as Earnings;
+  const started = Date.now();
+  const pending = get(`/api/earnings?wait=10&since=${current.totalEarnedMicroUsdc}`);
+  await new Promise((r) => setTimeout(r, 250));
+  await settleOneSale();
+  const released = (await (await pending).json()) as Earnings;
+  const elapsed = Date.now() - started;
+  assert.ok(elapsed < 5_000, `long-poll took ${elapsed} ms`);
+  assert.equal(BigInt(released.totalEarnedMicroUsdc), BigInt(current.totalEarnedMicroUsdc) + 100n);
+});
+
+test('GET /api/earnings?wait= long-poll times out with the unchanged total', async () => {
+  const current = (await (await get('/api/earnings')).json()) as Earnings;
+  const started = Date.now();
+  const res = await get(`/api/earnings?wait=1&since=${current.totalEarnedMicroUsdc}`);
+  const elapsed = Date.now() - started;
+  assert.ok(elapsed >= 900 && elapsed < 4_000, `timeout path took ${elapsed} ms`);
+  const body = (await res.json()) as Earnings;
+  assert.equal(body.totalEarnedMicroUsdc, current.totalEarnedMicroUsdc);
+});
+
+test('GET /api/earnings?wait= with a stale since returns immediately', async () => {
+  const started = Date.now();
+  const res = await get('/api/earnings?wait=10&since=-1');
+  assert.equal(res.status, 200);
+  assert.ok(Date.now() - started < 1_000);
 });
 
 // ---------------------------------------------------------------------------
