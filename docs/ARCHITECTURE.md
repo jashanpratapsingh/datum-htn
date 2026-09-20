@@ -143,7 +143,11 @@ role); the website reads with the publishable key under RLS. Tables, all
 | `vendx_sales` (+ view `vendx_sales_public`) | relay via `vendx_record_settlement()` | everyone (view: no receipt, no buyer identity), owner (full row) | every settled sale with `agent_id` / `user_id` attribution |
 | `vendx_relays`, `vendx_devices` | relay heartbeat (30 s) | everyone | the directory: public URL, vendor wallet, price, source, `last_seen` |
 | `vendx_agents` | website via `vendx_create_agent()` (owner) | owner (never `key_hash`), relay (by hash) | API keys as sha256 + prefix |
-| `vendx_accounts` | website (another branch's Phantom login) | — | wallet sign-ins |
+| `vendx_accounts` | website (Phantom login) | website | wallet sign-ins; `user_id` maps the wallet to its `auth.users` row (0006) |
+| `vendx_agent_wallets` | website (`/api/mcp`, consent page) | website only (service role) | one custodial Solana keypair per agent, secret AES-256-GCM under `VENDX_WALLET_KEK` |
+| `vendx_spend_reservations` | `vendx_reserve_spend` / `commit` / `release` (service role) | website | cap enforcement and the parallel-call race guard |
+| `vendx_readings` | website (`/api/mcp` after redeem) | owner (RLS) | every reading an agent bought, with `metric`/`value` for the dashboard charts |
+| `vendx_oauth_clients` / `_codes` / `_tokens` | website OAuth server (`/api/oauth/*`, `/oauth/authorize`) | owner sees tokens' client/last-used (RLS), never hashes | dynamic client registration, PKCE codes, access/refresh tokens as sha256 |
 
 Auth is Supabase Auth (email + password, confirmations off). Agents and
 purchases hang off `auth.users`.
