@@ -4,17 +4,26 @@ import { useEffect, useState } from 'react';
 import ScrubVideo from './ScrubVideo';
 import { Pill, CopyPill } from './Pill';
 import EconomicsPopup from './EconomicsPopup';
-import { useTypewriter } from './useTypewriter';
+import { useTypewriterSequence } from './useTypewriter';
+import { CONTACT_EMAIL } from '@/lib/site';
 
-const LINE =
-  'Glad you stopped by. It has been selling readings all morning. What do you want to know?';
+/*
+  The device introduces itself in three beats. Each line is typed, sits for a
+  moment, then falls out of focus as the next one is typed underneath — the
+  way a readout looks before your eyes adjust to the newest number.
+*/
+const LINES = [
+  'Meet a five-dollar sensor with its own wallet.',
+  'It sells its readings to AI agents and gets paid in USDC.',
+  'It has been selling all morning. What do you want to know?',
+] as const;
 
 export default function HeroSection() {
-  const { displayed, done } = useTypewriter(LINE);
+  const { lines, done } = useTypewriterSequence(LINES);
   const [pillsIn, setPillsIn] = useState(false);
 
   // Pills arrive on their own clock, not the typewriter's — waiting for the
-  // sentence to finish would hide the only navigation on the page for 4s.
+  // sequence to finish would hide the only navigation on the page for 6s.
   useEffect(() => {
     const t = setTimeout(() => setPillsIn(true), 400);
     return () => clearTimeout(t);
@@ -26,25 +35,10 @@ export default function HeroSection() {
 
       <div className="relative z-[3] flex h-full flex-col justify-end px-5 pb-16 sm:px-8 md:justify-center md:px-12 md:pb-0">
         <div className="max-w-[46rem]">
-          {/* Out of focus, the way a readout looks before your eyes adjust. */}
-          <p
-            aria-hidden="true"
-            className="mb-6 select-none text-ink-muted"
-            style={{
-              fontSize: 'clamp(18px, 2.6vw, 28px)',
-              lineHeight: 1.3,
-              filter: 'blur(4px)',
-            }}
-          >
-            Hey there — this is a five-dollar sensor.
-            <br />
-            It bills software for its own readings.
-          </p>
-
           {/*
-            The device's own line is the page heading. The full sentence is
+            The device's own lines are the page heading. The full copy is
             exposed to assistive tech immediately; the character-by-character
-            reveal and cursor are decoration.
+            reveal, the blur-out and the cursor are decoration.
           */}
           <h1
             className="mb-7 font-normal text-ink"
@@ -52,17 +46,32 @@ export default function HeroSection() {
               fontSize: 'clamp(20px, 2.6vw, 30px)',
               lineHeight: 1.3,
               letterSpacing: '-0.01em',
-              minHeight: 'calc(2 * 1.3em)',
             }}
           >
-            <span className="sr-only">{LINE}</span>
-            <span aria-hidden="true">{displayed}</span>
-            {!done && (
-              <span
-                aria-hidden="true"
-                className="cursor-blink ml-[2px] inline-block h-[1em] w-[2px] align-middle bg-ink"
-              />
-            )}
+            <span className="sr-only">{LINES.join(' ')}</span>
+            <span aria-hidden="true" className="flex flex-col gap-[0.35em]">
+              {LINES.map((full, i) => {
+                const line = lines[i];
+                return (
+                  <span
+                    key={full}
+                    className={`type-line relative block ${
+                      line.phase === 'settled' ? 'type-line-settled' : ''
+                    }`}
+                  >
+                    {/* The finished sentence, invisible, holds the line's height
+                        so nothing below jumps while it is being typed. */}
+                    <span className="invisible select-none">{full}</span>
+                    <span className="absolute inset-0">
+                      {line.text}
+                      {line.phase === 'typing' && !done && (
+                        <span className="cursor-blink ml-[2px] inline-block h-[1em] w-[2px] align-middle bg-ink" />
+                      )}
+                    </span>
+                  </span>
+                );
+              })}
+            </span>
           </h1>
 
           <div className={`flex flex-wrap rise ${pillsIn ? 'rise-in' : ''}`}>
@@ -71,7 +80,7 @@ export default function HeroSection() {
             <Pill href="/protocol">Read the protocol</Pill>
             <Pill href="/ledger">See what settled</Pill>
             <EconomicsPopup />
-            <CopyPill prefix="Reach us:" value="hello@vendx.dev" label="hello@vendx.dev" />
+            <CopyPill prefix="Reach us:" value={CONTACT_EMAIL} label={CONTACT_EMAIL} />
           </div>
         </div>
       </div>
