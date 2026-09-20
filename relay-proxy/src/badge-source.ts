@@ -22,6 +22,7 @@ import { execFile } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { promisify } from 'node:util';
 import { makeTelemetry } from './simulator.js';
+import { readPresenceNode } from './presence-source.js';
 
 const exec = promisify(execFile);
 
@@ -41,7 +42,8 @@ const DEAD_BACKOFF_MS = 60_000;
 export interface BadgeTelemetry {
   deviceId: string;
   timestamp: number;
-  source: 'badge' | 'simulator';
+  /** `badge` = conference badge over serial; `esp32c3` = an ESP32-C3 node over its own network face. */
+  source: 'badge' | 'simulator' | 'esp32c3';
   chip?: string;
   /** SHA-256 prefix of the BLE MAC. The raw MAC is never published. */
   deviceHash?: string;
@@ -146,6 +148,10 @@ export async function readBadge(): Promise<BadgeTelemetry> {
     const dead = lastFailureAt > 0 && Date.now() - lastFailureAt < DEAD_BACKOFF_MS;
     return { ...lastGood, timestamp: now, ageSeconds: age, badgeState: dead ? 'unresponsive' : 'ok' };
   }
+
+  // No console reading: a presence-node badge on WiFi is the next real thing.
+  const node = readPresenceNode();
+  if (node) return node;
 
   const sim = { ...(makeTelemetry() as unknown as BadgeTelemetry), source: 'simulator' as const };
   return badgeAttached()

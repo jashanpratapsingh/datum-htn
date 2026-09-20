@@ -1,6 +1,7 @@
 import { createRelayServer, DEFAULT_PORT } from './server.js';
 import { getKeys } from './keys.js';
 import { badgeAttached, BADGE_PORT } from './badge-source.js';
+import { PRESENCE_NODE } from './presence-source.js';
 import { SETTLEMENT_MODE, rpcUrl } from './facilitator.js';
 import { VENDOR_WALLET } from './simulator.js';
 import { getRelayIdentity } from './identity.js';
@@ -41,5 +42,10 @@ server.listen(PORT, () => {
     badgeAttached()
       ? `[relay-proxy] mode: badge — polling ${BADGE_PORT} for genuine telemetry`
       : `[relay-proxy] mode: simulator — no badge at ${BADGE_PORT}`,
+  );
+  console.log(
+    PRESENCE_NODE
+      ? `[relay-proxy] presence node: ${PRESENCE_NODE} — polled over WiFi, sold as source=esp32c3`
+      : '[relay-proxy] presence node: none (set VENDX_PRESENCE_NODE=<host[:port]>)',
   );
 });

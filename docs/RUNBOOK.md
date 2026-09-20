@@ -470,6 +470,29 @@ moved and made a healthy tunnel look dead; if it reports a stale local record,
 flush with `sudo dscacheutil -flushcache; sudo killall -HUP mDNSResponder`.
 The public internet and Vercel are unaffected by that cache.
 
+## Presence node (ESP32-C3 running the presence-node firmware, read over WiFi)
+
+A badge reflashed with the presence-node (ESPectre) build has no serial console,
+so `scripts/badge.py` cannot read it and the relay would fall back to the
+simulator even with the badge on USB. Instead the relay polls the node's own
+HTTP API over WiFi (TCP 62587, base path `/espectre/v1`, exact-Origin allowlist)
+and keeps one SSE connection open for `motion` events. The reading is sold via
+x402 like any other and stamped `"source": "esp32c3"` with `transport:
+"wifi-http"`, `firmware`, `readAt` and `ageSeconds`.
+
+```bash
+# ~/.vendx/relay.env — relay.sh loads it
+VENDX_PRESENCE_NODE=172.20.10.13          # host[:port]; port defaults to 62587
+VENDX_NODE_LOCATION="Hack the North"      # optional free text, shown as a plate on /devices
+# VENDX_PRESENCE_ORIGIN=https://test.espectre.dev   # the firmware's default allow-listed Origin
+```
+
+Precedence in `readBadge()`: conference badge console (source `badge`) →
+presence node (source `esp32c3`) → simulator. The device id is
+`<chip>-<last 6 of the node's device_id>`, e.g. `esp32c3-3d24a3`. Laptop and
+node must be on the same hotspot (see docs/BADGE.md); unplug the node from USB
+while the relay runs so the serial poller does not reset it every minute.
+
 ## Vendor node (disposable badge running firmware-vendor)
 
 The node serves the x402 endpoint itself on port 80 (`GET /api/telemetry`,

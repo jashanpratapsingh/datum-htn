@@ -71,12 +71,26 @@ function combine<A, B>(
    Page-facing types. These are what components consume.
  * ------------------------------------------------------------------ */
 
+export interface MotionReading {
+  state: string;
+  score: number;
+  at: number;
+}
+
 export interface DeviceEntry {
   id: string;
   /** The relay (vendor) this device is sold through. */
   relay: RelayInfo;
-  source: 'badge' | 'simulator';
+  source: 'badge' | 'simulator' | 'esp32c3';
   chip?: string;
+  /** Presence-node (WiFi ESP32-C3) fields. Absent on the console badge and the simulator. */
+  motion?: MotionReading;
+  location?: string;
+  firmware?: string;
+  transport?: string;
+  rssiDbm?: number;
+  uptimeSeconds?: number;
+  sensing?: { enabled: boolean; ready: boolean; calibrating: boolean; threshold: number };
   deviceHash?: string;
   freeHeap?: number;
   largestBlock?: number;
@@ -159,7 +173,7 @@ export interface LedgerEntry {
 
 interface WireDeviceSummary {
   id: string;
-  source: 'badge' | 'simulator';
+  source: 'badge' | 'simulator' | 'esp32c3';
   priceUsd: number;
   freeHeap: number | null;
   largestBlock: number | null;
@@ -167,13 +181,24 @@ interface WireDeviceSummary {
   lastSeen: number;
   totalSales: number;
   totalEarnedMicroUsdc: string;
+  motion?: MotionReading;
+  location?: string;
+  firmware?: string;
+  transport?: string;
 }
 
 interface WireTelemetry {
   deviceId: string;
   timestamp: number;
-  source: 'badge' | 'simulator';
+  source: 'badge' | 'simulator' | 'esp32c3';
   chip?: string;
+  motion?: MotionReading;
+  location?: string;
+  firmware?: string;
+  transport?: string;
+  rssiDbm?: number;
+  uptimeSeconds?: number;
+  sensing?: { enabled: boolean; ready: boolean; calibrating: boolean; threshold: number };
   deviceHash?: string;
   freeHeap?: number;
   largestBlock?: number;
@@ -245,6 +270,10 @@ function summaryToEntry(relay: RelayInfo, d: WireDeviceSummary): DeviceEntry {
     earningsMicroUsdc: d.totalEarnedMicroUsdc,
     totalSales: d.totalSales,
     priceUsd: d.priceUsd,
+    motion: d.motion,
+    location: d.location,
+    firmware: d.firmware,
+    transport: d.transport,
   };
 }
 
@@ -283,6 +312,13 @@ async function fetchDeviceFrom(relay: RelayInfo, id: string): Promise<One<Device
       fsBytes: device.fsBytes,
       lastSeen: device.timestamp,
       earningsMicroUsdc: earned.toString(),
+      motion: device.motion,
+      location: device.location,
+      firmware: device.firmware,
+      transport: device.transport,
+      rssiDbm: device.rssiDbm,
+      uptimeSeconds: device.uptimeSeconds,
+      sensing: device.sensing,
     },
   };
 }

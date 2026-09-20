@@ -240,6 +240,11 @@ export function createRelayServer(port = DEFAULT_PORT, opts: RelayServerOptions 
             lastSeen: telemetry.timestamp,
             totalSales: deviceSales.length,
             totalEarnedMicroUsdc: totalEarned.toString(),
+            // Presence-node fields; absent on the console badge and the simulator.
+            ...(telemetry.motion ? { motion: telemetry.motion } : {}),
+            ...(telemetry.location ? { location: telemetry.location } : {}),
+            ...(telemetry.firmware ? { firmware: telemetry.firmware } : {}),
+            ...(telemetry.transport ? { transport: telemetry.transport } : {}),
           },
         ],
       });
