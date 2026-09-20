@@ -28,17 +28,14 @@ test.describe('with relay-proxy running', () => {
     test.skip(!(await relayUp()), `relay-proxy not reachable at ${RELAY}`);
   });
 
-  test('a full handshake completes and dispenses telemetry', async ({ page }) => {
-    test.setTimeout(60_000);
+  test('the agent console asks a visitor to sign in before it will spend', async ({ page }) => {
+    // The full signed-in handshake (a real devnet purchase) lives in auth.spec.ts.
     const errors: string[] = [];
     page.on('pageerror', (e) => errors.push(e.message));
     await page.goto('/agent', { waitUntil: 'networkidle' });
-    await page.getByRole('button', { name: /run handshake/i }).click();
-    // Do NOT gate on the step-9 detail text: its idle placeholder is literally
-    // "source=badge or simulator", so a regex on it passes before anything runs.
-    // The dispensed panel only mounts once telemetry has actually landed.
-    await expect(page.getByText('200 OK · dispensed')).toBeVisible({ timeout: 30_000 });
-    await expect(page.getByText(/^9\/9$/)).toBeVisible();
+    await expect(page.getByRole('button', { name: /run handshake/i })).toHaveCount(0);
+    await expect(page.getByRole('link', { name: /sign in to run|read the protocol/i })).toBeVisible();
+    await expect(page.getByRole('list', { name: /handshake steps/i }).getByRole('listitem')).toHaveCount(9);
     expect(errors).toEqual([]);
   });
 

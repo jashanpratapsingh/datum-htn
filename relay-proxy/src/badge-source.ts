@@ -43,11 +43,8 @@ export function defaultBadgePort(): string {
 }
 
 const PORT = defaultBadgePort();
-
-/** The serial path currently being probed. */
-export function badgePort(): string {
-  return PORT;
-}
+/** The serial device the poller watches; exported for the startup log. */
+export const BADGE_PORT = PORT;
 
 /** How long one console read may take before we call the badge unresponsive. */
 const READ_TIMEOUT_MS = 20_000;

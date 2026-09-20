@@ -1,23 +1,13 @@
 import type { Metadata, Viewport } from 'next';
-import { IBM_Plex_Sans_Condensed, IBM_Plex_Mono } from 'next/font/google';
+import { Inter } from 'next/font/google';
 import './globals.css';
+import { WalletProvider } from '@/components/wallet/WalletProvider';
 
-/*
-  IBM Plex, because IBM is the mainframe. Condensed reads as the stencil
-  lettering stamped on a machine fascia; Mono is the terminal voice the
-  product actually speaks in.
-*/
-const panel = IBM_Plex_Sans_Condensed({
+/* One grotesque, regular weight, for every word on the site. */
+const inter = Inter({
   subsets: ['latin'],
-  weight: ['400', '500', '600', '700'],
-  variable: '--font-plex-condensed',
-  display: 'swap',
-});
-
-const readout = IBM_Plex_Mono({
-  subsets: ['latin'],
-  weight: ['400', '500', '600'],
-  variable: '--font-plex-mono',
+  weight: ['400', '500'],
+  variable: '--font-inter',
   display: 'swap',
 });
 
@@ -28,7 +18,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: '#071014',
+  themeColor: '#e4e0d8',
   width: 'device-width',
   initialScale: 1,
 };
@@ -36,7 +26,9 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body className={`${panel.variable} ${readout.variable}`}>{children}</body>
+      <body className={inter.variable}>
+        <WalletProvider>{children}</WalletProvider>
+      </body>
     </html>
   );
 }

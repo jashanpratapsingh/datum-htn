@@ -1,7 +1,13 @@
 import { createServer } from 'node:http';
 import { Connection } from '@solana/web3.js';
 
-import { settle } from './facilitator.js';
+import {
+  encodeReceipt,
+  encodeSettleHeader,
+  signReceipt,
+  type ReceiptBody,
+  type SettleResponse,
+} from '@vendx/protocol';
 import { getKeys } from './keys.js';
 import { describeConfig, loadConfig, type Config } from './config.js';
 import { pathOf, readJsonBody, sendJson } from './http.js';
@@ -10,18 +16,19 @@ import { verifySettlement, type SettlementResult } from './settlement.js';
 /**
  * A standalone facilitator that actually looks at the chain.
  *
- * This wraps, rather than replaces, `facilitator.ts`. That file already builds
- * and signs the receipt correctly and its own header notes the gap it leaves:
- * "in simulator mode it trusts the buyer's reported txSignature". So the split of
- * work here is:
+ * This sits beside, rather than replaces, the relay's `facilitator.ts`. That
+ * file settles against the relay's own nonce store (it only signs for nonces the
+ * relay issued); the nodes served here mint their own nonces, so the split of
+ * work is:
  *
  *   settlement.ts   did the money actually move, on the right mint, to the right
  *                   wallet, for the right nonce?
- *   facilitator.ts  given that it did, sign the receipt.        (unchanged)
+ *   this file       given that it did, sign the receipt with the shared
+ *                   `@vendx/protocol` primitives (`signReceiptFor` below).
  *
- * Signing still uses `getKeys()`, the same `keys/facilitator.json` the simulator
- * relay uses, so both servers present the same facilitator identity and a device
- * provisioned for one verifies receipts from the other.
+ * Signing uses `getKeys()`, the same `keys/facilitator.json` the relay uses, so
+ * both servers present the same facilitator identity and a device provisioned
+ * for one verifies receipts from the other.
  *
  * docs/PROTOCOL.md is explicit that this concentrates trust here: a dishonest
  * facilitator could mint a receipt for a payment that never settled. The sensor
@@ -43,6 +50,35 @@ interface SettleBody {
   amountMicroUsdc?: string;
   amount?: string;
   network?: string;
+}
+
+/** Sign a receipt for a payment `settlement.ts` has already confirmed. Pure; the wire format is @vendx/protocol's. */
+function signReceiptFor(
+  req: { nonce: string; txSignature: string; payTo: string; amount: string; network: string },
+  payer: string | null,
+): { receipt: string; settleHeader: string } {
+  const { secretKey } = getKeys();
+  const now = Math.floor(Date.now() / 1000);
+  const body: ReceiptBody = {
+    v: 1,
+    nonce: req.nonce,
+    payTo: req.payTo,
+    amount: req.amount,
+    signature: req.txSignature,
+    network: req.network as ReceiptBody['network'],
+    issuedAt: now,
+    expiresAt: now + 300,
+  };
+  const settleResp: SettleResponse = {
+    success: true,
+    transaction: req.txSignature,
+    network: body.network,
+    payer: payer ?? 'unverified',
+  };
+  return {
+    receipt: encodeReceipt(signReceipt(body, secretKey)),
+    settleHeader: encodeSettleHeader(settleResp),
+  };
 }
 
 export interface FacilitatorDeps {
@@ -168,19 +204,11 @@ export function createFacilitatorServer(deps: FacilitatorDeps) {
           return;
         }
 
-        // Verified. Hand off to the existing signer.
-        const signed = settle({
-          nonce,
-          txSignature: signature,
-          payTo,
-          amount: verdict.observedAmount,
-          network,
-        });
-        if (!signed.success) {
-          rejected++;
-          sendJson(res, 500, { error: 'sign_failed', detail: signed.errorReason });
-          return;
-        }
+        // Verified. Sign with the shared facilitator key.
+        const signed = signReceiptFor(
+          { nonce, txSignature: signature, payTo, amount: verdict.observedAmount, network },
+          verdict.payer,
+        );
 
         spentSignatures.add(signature);
         issued++;

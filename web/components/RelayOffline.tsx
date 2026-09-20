@@ -29,9 +29,9 @@ export function RelayOffline({ path, reason = 'offline' }: Props) {
   return (
     <div className="panel px-6 py-12 text-center">
       <p className="plate mb-3">{heading}</p>
-      <p className="text-[15px] text-phosphor/80">{hint}</p>
-      <p className="readout mt-4 text-xs text-phosphor-dim">{endpoint}</p>
-      <p className="readout mt-5 text-xs text-phosphor-dim/70">
+      <p className="text-[15px] text-ink/80">{hint}</p>
+      <p className="readout mt-4 text-xs text-ink-muted">{endpoint}</p>
+      <p className="readout mt-5 text-xs text-ink-muted/70">
         cd relay-proxy &amp;&amp; npm start
       </p>
     </div>

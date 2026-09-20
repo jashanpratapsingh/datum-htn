@@ -45,3 +45,6 @@ docs/assets/badge-screen*.png
 # playwright output — never commit
 web/test-results/
 web/playwright-report/
+
+# generated from keys/facilitator.json by scripts/gen-facilitator-key.mjs
+firmware-vendor/src/facilitator_key.h

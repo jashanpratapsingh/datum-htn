@@ -18,7 +18,8 @@ import {
   TransactionInstruction,
   sendAndConfirmTransaction,
 } from '@solana/web3.js';
-import { getSales, type SaleRecord } from './sales-log.js';
+// Sales come from the relay's Store (relay-proxy/src/store); only these fields are committed.
+import type { SaleRecord } from './store/types.js';
 
 /** Must match declare_id! / Anchor.toml [programs.devnet]. */
 export const VENDX_PROGRAM_ID = new PublicKey(
@@ -165,6 +166,7 @@ export async function buildLedgerStatus(
   conn: Connection | null,
   authority: PublicKey | null,
   network = 'solana-devnet',
+  pendingSales = 0,
 ): Promise<LedgerStatus> {
   const base: LedgerStatus = {
     programId: VENDX_PROGRAM_ID.toBase58(),
@@ -173,7 +175,7 @@ export async function buildLedgerStatus(
     initialized: false,
     authority: authority?.toBase58() ?? null,
     onChain: null,
-    pendingSales: getSales().length,
+    pendingSales,
     lastCommitSignature,
   };
   if (!conn) return base;
@@ -191,16 +193,17 @@ export async function buildLedgerStatus(
 
 /**
  * Commit unsold batches to the chain. No-op when the program is not deployed
- * or the authority key is missing.
+ * or the authority key is missing. `sales` is the relay's settled sales, oldest
+ * first (the Store lists newest first; callers reverse it).
  */
 export async function maybeCommitBatch(
   conn: Connection,
   authority: Keypair,
+  sales: readonly SaleRecord[],
 ): Promise<{ committed: number; signature: string | null }> {
   if (!(await programDeployed(conn))) {
     return { committed: 0, signature: null };
   }
-  const sales = getSales();
   const pending = sales.slice(0, Math.min(64, Math.max(0, sales.length - lastCommittedCount)));
   if (pending.length === 0) return { committed: 0, signature: null };
 
@@ -225,10 +228,12 @@ export async function maybeCommitBatch(
 export function startLedgerBatcher(
   conn: Connection,
   authority: Keypair,
+  loadSales: () => Promise<readonly SaleRecord[]>,
   intervalMs = 60_000,
 ): NodeJS.Timeout {
   return setInterval(() => {
-    void maybeCommitBatch(conn, authority)
+    void loadSales()
+      .then((sales) => maybeCommitBatch(conn, authority, sales))
       .then((r) => {
         if (r.committed > 0) {
           console.log(`[ledger] committed ${r.committed} buckets  tx=${r.signature?.slice(0, 16)}…`);

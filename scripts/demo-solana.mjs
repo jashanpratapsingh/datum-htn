@@ -106,7 +106,7 @@ console.log(`              ${before.price.rationale}`);
 console.log();
 
 await new Promise((resolve) => {
-  const buyer = start('buyer', 'agent-buyer/dist/buy.js');
+  const buyer = start('buyer', 'agent-buyer/dist/buy-node.js');
   buyer.on('exit', resolve);
 });
 

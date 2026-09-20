@@ -13,7 +13,7 @@ export default function PageShell({
   stamp?: React.ReactNode;
 }) {
   return (
-    <main className="min-h-screen bg-glass">
+    <main className="min-h-screen bg-canvas">
       <NavBar />
       <div className="mx-auto max-w-6xl px-5 pb-24 pt-28 sm:px-8 md:px-12">
         <PanelHeader title={title} subtitle={subtitle} stamp={stamp} />

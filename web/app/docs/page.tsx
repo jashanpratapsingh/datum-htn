@@ -18,24 +18,24 @@ const DOCS = [
 export default function DocsPage() {
   return (
     <PageShell title="Documentation" subtitle="Everything links into the repo. Every claim has a source.">
-      <div className="paper paper-tear mx-auto w-full max-w-3xl px-6 pb-8 pt-6 sm:px-8">
-        <div className="readout mb-5 border-b border-dashed border-ink-fade/50 pb-4 text-center text-[11px] uppercase tracking-[0.22em] text-ink-fade">
+      <div className="paper  mx-auto w-full max-w-3xl px-6 pb-8 pt-6 sm:px-8">
+        <div className="readout mb-5 border-b border-rule pb-4 text-center text-[12px] text-ink-muted">
           VENDX · operator's manual · contents
         </div>
         <ol className="readout">
           {DOCS.map(({ title, path, desc }, i) => (
-            <li key={path} className="border-b border-dotted border-ink-fade/40">
+            <li key={path} className="border-b border-dotted border-ink-muted/40">
               <a
                 href={`${REPO}/${path}`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="group flex items-baseline gap-4 py-3 hover:bg-paper-shade/60"
+                className="group flex items-baseline gap-4 py-3 hover:bg-rule/60"
               >
-                <span className="w-5 shrink-0 text-[11px] text-ink-fade">{i + 1}</span>
+                <span className="w-5 shrink-0 text-[11px] text-ink-muted">{i + 1}</span>
                 <span className="min-w-0 flex-1">
                   <span className="block text-[15px] text-ink group-hover:underline group-hover:underline-offset-2">{title}</span>
-                  <span className="block text-[12px] leading-relaxed text-ink-fade">{desc}</span>
-                  <span className="mt-0.5 block text-[10px] text-ink-fade/80">{path}</span>
+                  <span className="block text-[12px] leading-relaxed text-ink-muted">{desc}</span>
+                  <span className="mt-0.5 block text-[10px] text-ink-muted/80">{path}</span>
                 </span>
               </a>
             </li>

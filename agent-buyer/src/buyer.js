@@ -5,16 +5,18 @@
  * enforces its spend policy, obtains a receipt from the facilitator,
  * and replays the request with the receipt to collect real data.
  *
- * No Solana RPC calls in simulator mode — txSignature is a synthetic
- * string that the facilitator accepts (see relay-proxy/src/index.js).
- * In production, step 3 would call sendAndConfirmTransaction before
- * posting to /settle.
+ * Step 4 is a real USDC transferChecked on Solana (see ../dist/wallet.js,
+ * built from src/wallet.ts — run `npm run build -w @vendx/agent-buyer`).
+ * VENDX_FAKE_PAYMENT=1 substitutes a fabricated signature, which only a relay
+ * started with VENDX_SETTLEMENT=trust will accept; the result then says
+ * `payment: "fake"` so nobody mistakes it for a settlement.
  */
 
 import {
   selectRequirements,
   USDC_MINT_DEVNET,
 } from '@vendx/protocol';
+import { FAKE_PAYMENT, mockSolanaTxSig, payUsdc } from '../dist/wallet.js';
 
 /**
  * Buy one telemetry reading from a VENDX vendor.
@@ -22,13 +24,15 @@ import {
  * @param {object} opts
  * @param {string} opts.baseUrl               Vendor base URL, e.g. http://localhost:3402
  * @param {bigint} [opts.spendLimitMicroUsdc] Max spend per call (default 10 000 000 = $10)
- * @returns {Promise<{telemetry: object, paid: boolean, receipt?: string}>}
+ * @returns {Promise<{telemetry: object, paid: boolean, receipt?: string, txSignature?: string, payment?: 'solana'|'fake', explorer?: string}>}
  */
 export async function buy({ baseUrl, spendLimitMicroUsdc = 10_000_000n }) {
   const resourceUrl = `${baseUrl}/api/telemetry`;
+  // Optional attribution: an API key minted on the website ties this purchase to an account.
+  const keyHeaders = process.env.VENDX_API_KEY ? { 'X-Vendx-Agent-Key': process.env.VENDX_API_KEY } : {};
 
   // 1. Initial request — expect 402.
-  const res1 = await fetch(resourceUrl);
+  const res1 = await fetch(resourceUrl, { headers: keyHeaders });
 
   if (res1.status !== 402) {
     if (res1.ok) return { telemetry: await res1.json(), paid: false };
@@ -55,18 +59,35 @@ export async function buy({ baseUrl, spendLimitMicroUsdc = 10_000_000n }) {
 
   console.log(`  ✓ policy  amount=${req.maxAmountRequired} µUSDC  to=${req.payTo.slice(0, 8)}…`);
 
-  // 4. Simulate Solana payment. In production: sendAndConfirmTransaction().
-  //    The simulator accepts any non-empty string as a tx signature.
-  const fakeTxSig = 'SimTx1111' + challenge.nonce.slice(0, 48);
-  console.log(`  → execute  txSig=${fakeTxSig.slice(0, 16)}… (simulator)`);
+  // 4. Pay: a real, confirmed USDC transfer with the nonce in a memo.
+  let txSig;
+  let payment;
+  let explorer;
+  if (FAKE_PAYMENT) {
+    txSig = mockSolanaTxSig();
+    payment = 'fake';
+    console.log(`  → execute  txSig=${txSig.slice(0, 16)}… (FAKE — no payment happened)`);
+  } else {
+    console.log(`  → transfer ${req.maxAmountRequired} µUSDC → ${req.payTo.slice(0, 8)}… on ${req.network}`);
+    const paid = await payUsdc({
+      payTo: req.payTo,
+      amountMicroUsdc: req.maxAmountRequired,
+      network: req.network,
+      nonce: challenge.nonce,
+    });
+    txSig = paid.signature;
+    payment = 'solana';
+    explorer = paid.explorer;
+    console.log(`  ✓ confirmed ${explorer}`);
+  }
 
   // 5. Notify the facilitator and receive a signed receipt.
   const settleRes = await fetch(`${baseUrl}/settle`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...keyHeaders },
     body: JSON.stringify({
       nonce: challenge.nonce,
-      txSignature: fakeTxSig,
+      txSignature: txSig,
       payTo: req.payTo,
       amount: req.maxAmountRequired,
       network: req.network,
@@ -94,5 +115,5 @@ export async function buy({ baseUrl, spendLimitMicroUsdc = 10_000_000n }) {
   const telemetry = await res2.json();
   console.log(`  ← 200 OK`);
 
-  return { telemetry, paid: true, receipt };
+  return { telemetry, paid: true, receipt, txSignature: txSig, payment, explorer };
 }

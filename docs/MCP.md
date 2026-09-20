@@ -11,7 +11,7 @@ them:
 - The read/listing tools call `relay-proxy`'s REST API (`docs/API.md`)
   directly.
 - `vendx_buy_telemetry` constructs the same `Buyer` class
-  `agent-buyer/src/buy.ts` uses, so the daily `SpendPolicy` cap and the
+  `agent-buyer/src/buy-node.ts` uses, so the daily `SpendPolicy` cap and the
   on-chain SPL Token delegate allowance both still apply. This server cannot
   spend past either.
 - No tool grants or revokes the on-chain allowance. `npm run allowance` stays

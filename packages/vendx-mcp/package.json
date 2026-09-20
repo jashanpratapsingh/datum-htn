@@ -13,11 +13,11 @@
     "start": "node dist/server.js"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.12.0",
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "@solana/web3.js": "^1.99.0",
     "@vendx/agent-buyer": "*",
     "@vendx/protocol": "*",
-    "zod": "^3.23.8"
+    "zod": "^4.6.5"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",

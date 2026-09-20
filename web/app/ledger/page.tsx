@@ -1,9 +1,12 @@
 import PageShell from '@/components/PageShell';
 import { Panel, Readout } from '@/components/Panel';
+import { Pill } from '@/components/Pill';
 import { RelayOffline } from '@/components/RelayOffline';
-import { fetchLedger } from '@/lib/relay';
+import { SalesReceipt } from '@/components/SalesReceipt';
+import { fetchLedger, MULTI_RELAY, type LedgerEntry } from '@/lib/relay';
+import { dbLedger } from '@/lib/db';
 
-const solscan = (sig: string) => `https://solscan.io/tx/${sig}?cluster=devnet`;
+export const dynamic = 'force-dynamic';
 
 function RentArgument() {
   return (
@@ -14,8 +17,8 @@ function RentArgument() {
           <Readout label="ZK-compressed via Light Protocol" value="0.05" unit="USDC rent" tone="amber" size="lg" />
         </div>
       </div>
-      <p className="panel-divide px-4 py-3.5 text-[15px] text-phosphor/85">
-        <span className="readout text-phosphor">960×</span> cheaper. Thousands of readings a day per device
+      <p className="panel-divide px-4 py-3.5 text-[15px] text-ink/85">
+        <span className="readout text-ink">960×</span> cheaper. Thousands of readings a day per device
         is only viable if storing them costs nearly nothing — that is the reason this project exists.
       </p>
     </Panel>
@@ -23,71 +26,44 @@ function RentArgument() {
 }
 
 export default async function LedgerPage() {
-  const result = await fetchLedger();
-  const entries = result.ok ? result.data : [];
-  const total = entries.reduce((s, e) => s + Number(e.amount), 0) / 1e6;
+  // Settled payments live in Supabase, written by every relay; the relay's own
+  // /api/ledger is the fallback when the database is not configured.
+  const hist = await dbLedger();
+  const live = hist.ok ? null : await fetchLedger();
+  const ok = hist.ok || (live?.ok ?? false);
+  const entries: LedgerEntry[] = hist.ok ? hist.data : live?.ok ? live.data : [];
+  const source = hist.ok ? 'supabase' : 'relay';
 
   return (
     <PageShell
       title="On-chain ledger"
       subtitle="Every settled payment, linked to Solscan devnet. Printed the way a receipt is."
-      stamp={result.ok ? `${entries.length} settled` : 'no link'}
+      stamp={ok ? `${entries.length} settled · ${source}` : 'no link'}
     >
       <div className="flex flex-col gap-5">
         <RentArgument />
 
-        {!result.ok ? (
-          <RelayOffline path="/api/ledger" reason={result.reason} />
+        {!ok ? (
+          <RelayOffline path="/api/ledger" reason={live && !live.ok ? live.reason : 'offline'} />
         ) : entries.length === 0 ? (
           <Panel label="Settled">
-            <p className="readout px-4 py-12 text-center text-sm text-phosphor-dim">
-              Nothing settled yet. Run <span className="text-phosphor">npm run demo</span> to settle a payment.
-            </p>
+            <div className="px-4 py-12 text-center">
+              <p className="readout mb-4 text-sm text-ink-muted">Nothing settled yet.</p>
+              <Pill href="/agent">Buy the first reading</Pill>
+            </div>
           </Panel>
         ) : (
-          /* The second material. A receipt is paper — light, printed, torn off the roll. */
-          <div className="paper paper-tear mx-auto w-full max-w-2xl px-6 pb-8 pt-6 sm:px-8">
-            <div className="readout mb-1 text-center text-[11px] uppercase tracking-[0.22em] text-ink-fade">
-              VENDX · solana devnet · settlement receipt
-            </div>
-            <div className="readout mb-5 border-b border-dashed border-ink-fade/50 pb-4 text-center text-[11px] text-ink-fade">
-              {new Date().toISOString().slice(0, 19).replace('T', '  ')}
-            </div>
-
-            <ol className="readout text-[13px]">
-              {entries.map((e) => (
-                <li key={e.nonce} className="border-b border-dotted border-ink-fade/40 py-2.5">
-                  <div className="flex justify-between gap-4">
-                    <span className="truncate text-ink">{e.signature}</span>
-                    <span className="shrink-0 tabular-nums text-ink">{(Number(e.amount) / 1e6).toFixed(6)}</span>
-                  </div>
-                  <div className="mt-0.5 flex justify-between gap-4 text-[11px] text-ink-fade">
-                    <span>{e.network} · nonce {e.nonce.slice(0, 12)}…</span>
-                    <span className="flex items-center gap-3">
-                      {new Date(e.issuedAt * 1000).toLocaleTimeString()}
-                      <a
-                        href={solscan(e.signature)}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        aria-label={`View transaction ${e.signature.slice(0, 8)}… on Solscan`}
-                        className="text-ink underline underline-offset-2 hover:text-ink-fade"
-                      >
-                        solscan
-                      </a>
-                    </span>
-                  </div>
-                </li>
-              ))}
-            </ol>
-
-            <div className="readout mt-4 flex justify-between border-t-2 border-ink pt-3 text-[15px] font-semibold text-ink">
-              <span>TOTAL</span>
-              <span className="tabular-nums">{total.toFixed(6)} USDC</span>
-            </div>
-            <div className="readout mt-6 text-center text-[11px] text-ink-fade">
-              thank you for your data
-            </div>
-          </div>
+          <SalesReceipt
+            lines={entries.map((e) => ({
+              key: `${e.relay.key}:${e.nonce}`,
+              signature: e.signature,
+              amount: e.amount,
+              network: e.network,
+              nonce: e.nonce,
+              timestamp: e.issuedAt,
+              note: MULTI_RELAY || source === 'supabase' ? `via ${e.relay.label}` : undefined,
+            }))}
+          />
         )}
       </div>
     </PageShell>

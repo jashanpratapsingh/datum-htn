@@ -48,7 +48,7 @@ Expect both PASS lines.
 ```bash
 npm run test -w @vendx/relay-proxy
 ```
-Expect 50 pass. Supabase optional (set `SUPABASE_URL` + `SUPABASE_SERVICE_KEY` + apply `0002_sales.sql`).
+Expect 59 pass (relay 34 + sensing 25). Supabase optional: the relay persists when `SUPABASE_URL` + `SUPABASE_SECRET_KEY` are set (schema `supabase/migrations/0003_persistence.sql` onward; see RUNBOOK "Supabase").
 
 ---
 

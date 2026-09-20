@@ -7,7 +7,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod';
 
 import { loadOrCreateWallet, walletPath, type VendxNetwork } from '@vendx/protocol';
-import { Buyer, type BuyerConfig } from '@vendx/agent-buyer/dist/buy.js';
+import { Buyer, type BuyerConfig } from '@vendx/agent-buyer/dist/buy-node.js';
 import { allowanceStatus, type AllowanceContext } from '@vendx/agent-buyer/dist/allowance.js';
 
 /**
@@ -20,7 +20,7 @@ import { allowanceStatus, type AllowanceContext } from '@vendx/agent-buyer/dist/
  * that arc, not a second implementation of it:
  *
  *   - listing/read tools hit relay-proxy's REST API (docs/API.md) directly;
- *   - `vendx_buy_telemetry` constructs the same `Buyer` class `buy.ts` uses,
+ *   - `vendx_buy_telemetry` constructs the same `Buyer` class `buy-node.ts` uses,
  *     so the daily SpendPolicy cap and the on-chain delegate allowance both
  *     still apply — an agent cannot use this server to spend past either.
  *

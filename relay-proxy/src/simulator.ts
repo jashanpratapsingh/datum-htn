@@ -4,6 +4,9 @@
  * Builds 402 challenges and verifies facilitator-signed receipts exactly
  * as real firmware would — same codec, same key, same field checks.
  * No hardware required; the demo runs entirely against this module.
+ *
+ * Nonces live in the Store (memory or Supabase), so a receipt redeemed before
+ * a restart stays redeemed after it.
  */
 
 import {
@@ -14,13 +17,19 @@ import {
   type ReceiptBody,
 } from '@vendx/protocol';
 import { getKeys } from './keys.js';
-import { issueNonce, consumeNonce } from './nonce-store.js';
+import type { Store } from './store/types.js';
 
-export const VENDOR_WALLET = 'FHcgXc3YzNnq8WKcH8GaDvbKhJ4ycKxHnR7jzA8zAHU';
+/**
+ * The vendor's Solana wallet (owner, not the ATA). Set VENDX_VENDOR_WALLET to a
+ * key you control — scripts/relay.sh derives it from ~/.vendx/vendor-devnet.json.
+ * The fallback is a placeholder nobody holds; payments to it are lost.
+ */
+export const VENDOR_WALLET =
+  process.env.VENDX_VENDOR_WALLET ?? 'FHcgXc3YzNnq8WKcH8GaDvbKhJ4ycKxHnR7jzA8zAHU';
 export const VENDOR_PRICE_USD = 0.0001;
 const NETWORK = 'solana-devnet' as const;
 
-export function buildDeviceChallenge(): PaymentRequiredBody {
+export async function buildDeviceChallenge(store: Store, deviceId: string): Promise<PaymentRequiredBody> {
   const challenge = buildChallenge({
     resource: '/api/telemetry',
     description: 'foot traffic, 5-minute bucket',
@@ -30,11 +39,14 @@ export function buildDeviceChallenge(): PaymentRequiredBody {
     ttlSeconds: 300,
   });
 
-  issueNonce(challenge.nonce, {
+  // Awaited on purpose: a nonce we failed to persist must not be issued.
+  await store.issueNonce(challenge.nonce, {
     expiresAt: challenge.expiresAt,
     used: false,
     payTo: VENDOR_WALLET,
     amountMicroUsdc: challenge.accepts[0].maxAmountRequired,
+    deviceId,
+    network: NETWORK,
   });
 
   return challenge;
@@ -44,7 +56,7 @@ export type DeviceVerifyResult =
   | { ok: true; body: ReceiptBody }
   | { ok: false; reason: string };
 
-export function verifyDeviceReceipt(receiptHeader: string): DeviceVerifyResult {
+export async function verifyDeviceReceipt(receiptHeader: string, store: Store): Promise<DeviceVerifyResult> {
   const { publicKey } = getKeys();
 
   const signed = decodeReceipt(receiptHeader.trim());
@@ -62,8 +74,8 @@ export function verifyDeviceReceipt(receiptHeader: string): DeviceVerifyResult {
   }
 
   // Burn nonce — single use, enforced here even though the facilitator already
-  // did it at /settle time, as defence-in-depth against a receipt being replayed.
-  const consumed = consumeNonce(body.nonce);
+  // recorded the settlement, as defence-in-depth against a receipt being replayed.
+  const consumed = await store.consumeNonce(body.nonce);
   if (!consumed.ok) return { ok: false, reason: consumed.reason };
 
   return { ok: true, body };

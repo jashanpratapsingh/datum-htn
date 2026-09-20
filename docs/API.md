@@ -181,6 +181,15 @@ Types: `SettleRequest`/`SettleOk`/`SettleErr` in `relay-proxy/src/facilitator.ts
 
 ## GET /health
 
+```json
+{ "status": "ok" | "degraded", "mode": "badge" | "simulator", "persistence": "supabase" | "memory",
+  "settlement": "verify" | "trust", "relayId": "<facilitator pubkey hex>", "publicUrl": "https://relay.vendx.biz",
+  "heartbeat": { "lastAt": 1789871430, "ok": true, "count": 12 } }
+```
+
+`degraded` means Supabase is configured and the last directory heartbeat
+failed. `relayId` is also the relay's row id in the directory.
+
 Liveness check.
 
 **Response** `200 application/json`
@@ -325,6 +334,77 @@ Up to 20 most recent entries are returned. `deployed: false` until
 
 ---
 
+## Attribution: `X-Vendx-Agent-Key`
+
+Payment is the only access control; a key only says *who* bought, so the
+website can show each account its own purchases.
+
+- Format: `vendx_sk_` + 43 base64url characters (52 chars), minted on the
+  website under **Account → Agents**. The relay stores and compares only its
+  sha256; the plaintext is shown once.
+- `GET /api/telemetry` (402 path): a malformed, unknown or revoked key is
+  refused with **401** `{ error: "bad_agent_key" | "agent_revoked", hint }`
+  before any money moves. No key → anonymous, as before.
+- `POST /settle`: a bad key never fails a settle (the buyer has already paid).
+  The response carries `attribution`: `agent` | `web` | `anonymous` |
+  `unknown_key` | `revoked_key`.
+- The website's own purchases use `X-Vendx-Web-Secret` (shared with the relay
+  as `VENDX_WEB_SECRET`) plus `X-Vendx-User-Id`; they settle with
+  `attribution: "web"`.
+
+`POST /settle` is idempotent for a retry of the same `nonce` + `txSignature`:
+the earlier receipt is returned with `"idempotent": true`. A settled nonce
+presented with a different signature is `402 nonce_replayed`; a signature that
+already bought a receipt for another nonce is `402 signature_reused`.
+
+### `X-Vendx-Agent-Id` (with the web secret)
+
+When the website's server buys on behalf of one of a user's agents — the remote
+MCP server at `/api/mcp` does this on every `vendx_buy_reading` — it sends
+`x-vendx-web-secret`, `x-vendx-user-id` **and** `x-vendx-agent-id` (a
+`vendx_agents.id`). The sale is then attributed to both the account and the
+agent (`vendx_sales.user_id`, `vendx_sales.agent_id`); the agent id is ignored
+unless the secret matches, and a dangling id is nulled by
+`vendx_record_settlement` (migration 0004) rather than failing the settlement.
+
+## GET /api/directory
+
+Every relay and device that has heartbeated into the store, across all relays
+sharing the Supabase project. Liveness is derived from `lastSeen` by the
+reader (`live` ≤ 90 s, `stale` ≤ 600 s, else `lost`).
+
+```json
+{
+  "persistence": "supabase",
+  "relays": [{ "id": "<facilitator pubkey hex>", "label": "jashan", "publicUrl": "https://relay.vendx.biz",
+               "vendorWallet": "3Tm2…", "network": "solana-devnet", "settlement": "verify",
+               "facilitatorPubkey": "<base64url>", "version": "0.1.0", "lastSeen": 1789871430, "state": "live", "ageSeconds": 4 }],
+  "devices": [{ "relayId": "<hex>", "id": "esp32-sim-001", "source": "simulator", "resource": "/api/telemetry",
+                "priceMicroUsdc": "100", "payTo": "3Tm2…", "network": "solana-devnet", "stats": { "freeHeap": null }, "lastSeen": 1789871430, "state": "live", "ageSeconds": 4 }]
+}
+```
+
+## GET /api/me · GET /api/me/purchases?limit=50
+
+Require `X-Vendx-Agent-Key`. `401 missing_agent_key | bad_agent_key |
+agent_revoked` otherwise.
+
+- `/api/me` → `{ agent: { id, name, keyPrefix, createdAt, lastUsedAt }, userId, persistence }`
+- `/api/me/purchases` → `{ agent: { id, name }, purchases: [ SaleRecord & { receipt, solscanUrl } ] }`
+  (newest first, across every relay in Supabase mode; `limit` 1–200).
+
+## Persistence and `503 store_unavailable`
+
+With `SUPABASE_URL` + `SUPABASE_SECRET_KEY` set, nonces, used transaction
+signatures, sales and the directory live in Supabase (`supabase/migrations/`)
+and survive restarts; a redeemed receipt stays redeemed. Without them the relay
+runs on memory and says so at startup and in `/health`. When Supabase is
+configured and a query fails, any route that needed it answers
+`503 { error: "store_unavailable", op }` — the relay never silently falls back
+to memory, because a nonce it cannot remember is a nonce it cannot honour.
+Receipts are never included in `/api/sales`, `/api/ledger` or the public view;
+only the buying agent gets them back (`/api/me/purchases`).
+
 ## Key persistence
 
 The facilitator Ed25519 keypair is generated on first start and written to
@@ -341,3 +421,12 @@ public key compiled in — rotating it requires a firmware rebuild.
 | `VENDX_BADGE_SCRIPT` | `scripts/badge.py` | Serial bridge script |
 | `VENDX_BADGE_PORT` | `/dev/cu.usbmodem101` (macOS/Linux) or `COM3` (Windows) | USB serial device for the HTN badge |
 | `VENDX_ALLOW_SCREEN` | unset | Set to enable `GET /api/screen` |
+| `SUPABASE_URL` | — | Supabase project URL; with the key below, enables persistence |
+| `SUPABASE_SECRET_KEY` | — | `sb_secret_…` (or legacy `SUPABASE_SERVICE_ROLE_KEY`). Relay only, never in `web/` |
+| `VENDX_PUBLIC_URL` | `http://localhost:<port>` | How the directory advertises this relay (`scripts/relay.sh` sets it) |
+| `VENDX_RELAY_LABEL` | hostname | Directory label |
+| `VENDX_HEARTBEAT_SEC` | `30` | Directory heartbeat interval |
+| `VENDX_WEB_SECRET` | — | Shared with the website so its purchases are attributed to accounts |
+| `VENDX_SETTLEMENT` | `verify` | `verify`: /settle checks the USDC transfer on-chain before signing. `trust`: signs unverified (demo). |
+| `VENDX_VENDOR_WALLET` | placeholder | Vendor's Solana wallet quoted as `payTo`; set it to a key you control. |
+| `VENDX_SOLANA_RPC` | public devnet/mainnet | RPC endpoint used to verify payments. |

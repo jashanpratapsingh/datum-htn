@@ -11,12 +11,11 @@
     "node": "node dist/node.js",
     "facilitator": "node dist/facilitator-server.js",
     "sense": "node dist/bin/sense-once.js",
-    "test": "tsc -p tsconfig.json && node --test \"dist/**/*.test.js\""
+    "test": "tsc -p tsconfig.json && VENDX_SETTLEMENT=trust VENDX_BADGE_PORT=/dev/cu.vendx-none node --test \"dist/**/*.test.js\""
   },
   "dependencies": {
-    "@solana/spl-token": "^0.4.9",
     "@solana/web3.js": "^1.99.0",
-    "@supabase/supabase-js": "^2.49.1",
+    "@supabase/supabase-js": "^2.116.0",
     "@vendx/protocol": "*",
     "tweetnacl": "^1.0.3"
   },

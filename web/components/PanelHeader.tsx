@@ -21,11 +21,11 @@ export default function PanelHeader({
   return (
     <div className="mb-10 flex items-start justify-between gap-6 border-b border-rule pb-5">
       <div>
-        <h1 className="text-3xl leading-none tracking-tight text-phosphor md:text-4xl">
+        <h1 className="text-3xl leading-none tracking-tight text-ink md:text-4xl">
           {title}
         </h1>
         {subtitle && (
-          <p className="mt-3 max-w-2xl text-[15px] leading-relaxed text-phosphor-dim">
+          <p className="mt-3 max-w-2xl text-[15px] leading-relaxed text-ink-muted">
             {subtitle}
           </p>
         )}
