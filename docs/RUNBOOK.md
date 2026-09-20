@@ -123,7 +123,17 @@ NEXT_PUBLIC_RELAY_URL=https://<your-relay-proxy-url>
 NEXT_PUBLIC_RELAYS=jashan=https://relay.vendx.biz,teammate=https://<their-relay>
 NEXT_PUBLIC_SUPABASE_URL=<production Supabase URL>
 NEXT_PUBLIC_SUPABASE_ANON_KEY=<production anon key>
+
+# Phantom login (web). Server-side only except NEXT_PUBLIC_SOLANA_RPC_URL.
+NEXT_PUBLIC_SOLANA_RPC_URL=https://api.devnet.solana.com   # balances + Phantom payments in the browser
+SESSION_SECRET=<openssl rand -hex 32>                        # HMAC key for the vendx_session cookie; required on Vercel
+SUPABASE_URL=https://dhjhsupqdmcdyqghxace.supabase.co        # hosted project Datum-htn; vendx_accounts lives here
+SUPABASE_SERVICE_KEY=<supabase projects api-keys --project-ref dhjhsupqdmcdyqghxace>
+SIWS_ALLOWED_DOMAINS=                                        # optional extra hosts for the SIWS domain line (previews)
 ```
+
+`web/.env.example` and `relay-proxy/.env.example` list each package's variables;
+`scripts/dev.env.example` is the template for the one-command stack below.
 
 The facilitator public key must match what is compiled into the firmware. Changing
 it requires a firmware rebuild and re-flash.
@@ -190,6 +200,65 @@ vercel --prod
 Set the environment variables in the Vercel dashboard. The `NEXT_PUBLIC_*`
 variables are baked in at build time; server-side variables (`SUPABASE_SERVICE_KEY`)
 are injected at runtime.
+
+The Phantom login needs four of them on Vercel (production and preview):
+`SESSION_SECRET`, `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `NEXT_PUBLIC_SOLANA_RPC_URL`.
+Without `SESSION_SECRET` the auth routes throw on Vercel by design (a random
+per-process secret would log everyone out on every cold start). Without the
+Supabase pair, login still works and the response carries
+`warning: "accounts_unavailable"`.
+
+## Phantom login (web)
+
+One pill in the navbar, top right, for vendors and customers alike.
+
+1. **Connect Phantom** → the site asks `POST /api/auth/nonce` for a Sign In
+   With Solana input (domain, statement, nonce, issuedAt) and hands it to
+   Phantom's `signIn`. One popup: connect and sign together. Older Phantom
+   builds without `signIn` fall back to `connect` + `signMessage` (two popups).
+2. `POST /api/auth/verify` checks the Ed25519 signature over the exact bytes
+   Phantom signed, parses them back into fields, and compares domain, address,
+   nonce (from the 5-minute `vendx_siws` cookie) and issue time. Then it sets
+   `vendx_session` (httpOnly, SameSite=Lax, 7 days, HMAC-signed, stateless) and
+   calls `vendx_touch_account` in Supabase (`supabase/migrations/0002_accounts.sql`:
+   wallet, first_seen, last_seen, login_count, last_domain, last_method).
+3. The pill shows the truncated address and the wallet's **devnet SOL and USDC**,
+   read in the browser from `NEXT_PUBLIC_SOLANA_RPC_URL` every 30 s while the
+   tab is visible. Click it for the full address, balances, role and Disconnect.
+4. **Coming back**: the cookie restores the login on the server, and the page
+   calls `connect({ onlyIfTrusted: true })` so Phantom re-attaches silently. If
+   Phantom reports a different account, or the user disconnects in the
+   extension, the site logs out rather than show one wallet while another signs.
+5. **Role** is derived, never stored: a wallet is a *vendor* when some relay's
+   `/api/devices` lists a registered device whose `payTo` is that wallet; anyone
+   else is a *visitor*.
+6. **Paying**: on `/agent`, a connected wallet pays the 402 for real — the page
+   builds the same transaction `agent-buyer` sends (idempotent ATA create,
+   `transferChecked` USDC, Memo = nonce), Phantom signs and sends it, the page
+   waits for `confirmed`, then `/settle` verifies it on-chain. Disconnected
+   visitors still get the simulated run, labelled as such, which a verifying
+   relay refuses with `payment_not_found`.
+
+Tests: `web/tests/wallet.spec.ts` drives the real routes through a Phantom
+mock that signs with a real Ed25519 key (`web/tests/helpers/mock-phantom.ts`).
+The live-payment test runs only with `VENDX_E2E_KEYPAIR=<funded devnet keypair>`
+and a relay up; it moves real devnet USDC.
+
+## One-command dev stack
+
+```bash
+scripts/dev.sh up            # relay-proxy (demo: simulator + trust) on :3402, next dev on :3000
+scripts/dev.sh up real       # relay.sh up: badge poll + on-chain verification
+scripts/dev.sh status        # /health, :3000, who owns what
+scripts/dev.sh logs          # tail ~/.vendx/relay.log and ~/.vendx/web-dev.log
+scripts/dev.sh down          # stops the web dev server; stops the relay only if dev.sh started it
+```
+
+Env comes from `~/.vendx/dev.env` (created from `scripts/dev.env.example` on
+the first run; fill in `SUPABASE_SERVICE_KEY` and `SESSION_SECRET`). A relay
+that `scripts/relay.sh` already runs on :3402 is adopted, not restarted — pass
+`--restart` to switch modes. Anything else holding :3402 or :3000 is reported
+and left alone.
 
 ## Troubleshooting
 
