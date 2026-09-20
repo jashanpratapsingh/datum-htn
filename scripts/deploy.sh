@@ -40,6 +40,7 @@ cmd_check() {
   command -v supabase >/dev/null || die "supabase CLI missing"
   command -v gh >/dev/null || die "gh CLI missing"
   say "logins"
+  [ -f "$ROOT/.vercel/project.json" ] || die "repo root is not linked to the Vercel project (copy .vercel/ from a linked checkout; Root Directory is web)"
   local who; who="$(vercel whoami 2>/dev/null | tail -1)"; [ "$who" = "jashanpratapsingh" ] || die "vercel is logged in as '$who', expected jashanpratapsingh"
   gh auth status 2>&1 | grep -q 'Logged in to github.com account jashanpratapsingh' || die "gh is not logged in as jashanpratapsingh"
   [ "$(git -C "$ROOT" config user.email)" = "88160290+jashanpratapsingh@users.noreply.github.com" ] || [ "$(git -C "$ROOT" config user.email)" = "jashanpratap123@gmail.com" ] || die "git identity is not the personal one"
@@ -63,7 +64,7 @@ cmd_migrate() {
 }
 
 cmd_env() {
-  cd "$ROOT/web"
+  cd "$ROOT"  # the Vercel project has Root Directory = web, so the link and every vercel command live at the repo root
   local targets=(production); [ "${1:-}" = "preview" ] && targets+=(preview)
   say "pushing ${#REQUIRED[@]}+ variables to Vercel: ${targets[*]} (values are never printed)"
   for v in "${REQUIRED[@]}" "${OPTIONAL[@]}"; do
@@ -107,9 +108,10 @@ cmd_verify() {
 }
 
 cmd_preview() {
-  cd "$ROOT/web"
+  cd "$ROOT"
   say "vercel preview deploy"
-  local url; url="$(vercel deploy --yes 2>/dev/null | tail -1)"
+  local out; out="$(vercel deploy --yes 2>&1)" || { printf '%s\n' "$out" | tail -5; die "vercel deploy failed"; }
+  local url; url="$(printf '%s\n' "$out" | grep -Eo 'https://[a-z0-9.-]+\.vercel\.app' | tail -1)"
   [ -n "$url" ] || die "vercel deploy printed no URL"
   echo "  preview: $url"
   echo "$url" > "$STATE/web-preview-url"
