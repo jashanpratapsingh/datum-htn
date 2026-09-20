@@ -1,7 +1,8 @@
 import { redirect } from 'next/navigation';
 import PageShell from '@/components/PageShell';
 import LoginForm from '@/components/auth/LoginForm';
-import { getSessionUser } from '@/lib/supabase/server';
+import WalletLogin from '@/components/auth/WalletLogin';
+import { getViewer } from '@/lib/auth/viewer';
 import { hasSupabaseEnv } from '@/lib/supabase/env';
 
 function safeNext(raw: string | undefined): string {
@@ -11,17 +12,21 @@ function safeNext(raw: string | undefined): string {
 export default async function LoginPage({ searchParams }: { searchParams: Promise<{ next?: string }> }) {
   const { next } = await searchParams;
   const target = safeNext(next);
-  const user = await getSessionUser();
-  if (user) redirect(target);
+  // Either login counts: an email session or a connected Phantom wallet.
+  if (await getViewer()) redirect(target);
 
   return (
     <PageShell
       title="Sign in"
-      subtitle="An account holds the agents you register and every reading they buy. Email and password, nothing sent to your inbox."
+      subtitle="An account holds the agents you connect, their budgets and every reading they buy. Phantom first; email and password if you have no wallet."
       stamp={hasSupabaseEnv() ? 'supabase auth' : 'auth not configured'}
     >
       {hasSupabaseEnv() ? (
-        <LoginForm next={target} />
+        <div className="flex flex-col gap-6">
+          <WalletLogin next={target} />
+          <p className="plate text-center">or with email</p>
+          <LoginForm next={target} />
+        </div>
       ) : (
         <div className="panel px-6 py-12 text-center">
           <p className="plate mb-3">Accounts are not configured on this deployment</p>

@@ -1,13 +1,8 @@
 {
   "mcpServers": {
     "vendx": {
-      "type": "stdio",
-      "command": "node",
-      "args": ["agent-buyer/dist/mcp.js"],
-      "env": {
-        "RELAY_URL": "${RELAY_URL:-https://relay.vendx.biz}",
-        "VENDX_API_KEY": "${VENDX_API_KEY}"
-      }
+      "type": "http",
+      "url": "https://vendx.biz/api/mcp"
     }
   }
 }

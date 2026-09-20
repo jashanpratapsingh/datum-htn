@@ -20,6 +20,8 @@ import type { AgentRef, Store } from './store/types.js';
 export const AGENT_KEY_HEADER = 'x-vendx-agent-key';
 export const WEB_SECRET_HEADER = 'x-vendx-web-secret';
 export const WEB_USER_HEADER = 'x-vendx-user-id';
+/** With the web secret: the agent (vendx_agents.id) the website is buying for, e.g. an MCP connection. */
+export const WEB_AGENT_HEADER = 'x-vendx-agent-id';
 
 /** 'vendx_sk_' + base64url(32 bytes) = 52 chars. */
 export const AGENT_KEY_RE = /^vendx_sk_[A-Za-z0-9_-]{43}$/;
@@ -35,7 +37,7 @@ export type AgentResolution =
   | { status: 'unknown' }
   | { status: 'revoked'; agent: AgentRef }
   | { status: 'ok'; agent: AgentRef }
-  | { status: 'web'; userId: string };
+  | { status: 'web'; userId: string; agentId?: string };
 
 function header(req: IncomingMessage, name: string): string | undefined {
   const v = req.headers[name];
@@ -62,7 +64,8 @@ export async function resolveAgent(req: IncomingMessage, store: Store): Promise<
   const secret = header(req, WEB_SECRET_HEADER);
   const userId = header(req, WEB_USER_HEADER);
   if (secret && userId && UUID_RE.test(userId) && secretMatches(secret)) {
-    return { status: 'web', userId };
+    const agentId = header(req, WEB_AGENT_HEADER);
+    return agentId && UUID_RE.test(agentId) ? { status: 'web', userId, agentId } : { status: 'web', userId };
   }
   return { status: 'anonymous' };
 }

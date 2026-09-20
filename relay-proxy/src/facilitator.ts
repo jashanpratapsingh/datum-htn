@@ -59,6 +59,8 @@ export interface SettleContext {
     deviceId?: string;
     agent?: AgentRef | null;
     userId?: string | null;
+    /** Agent named by the website alongside the web secret (no key involved). */
+    agentId?: string | null;
   };
   attribution: Attribution;
 }
@@ -70,6 +72,8 @@ export interface SettleOk {
   attribution: Attribution;
   /** True when this nonce+signature had already been settled and the earlier receipt is returned. */
   idempotent?: boolean;
+  /** Fee payer read from the confirmed transaction; 'unverified' in trust mode. */
+  payer: string;
 }
 
 export interface SettleErr {
@@ -183,7 +187,7 @@ export async function settle(req: SettleRequest, ctx: SettleContext): Promise<Se
     relayId: ctx.sale.relayId,
     network,
     payer,
-    agentId: ctx.sale.agent?.id ?? null,
+    agentId: ctx.sale.agent?.id ?? ctx.sale.agentId ?? null,
     userId: ctx.sale.userId ?? ctx.sale.agent?.userId ?? null,
     receipt,
   });
@@ -204,6 +208,7 @@ export async function settle(req: SettleRequest, ctx: SettleContext): Promise<Se
           receipt: recorded.priorReceipt,
           settleHeader: encodeSettleHeader(settleResp),
           attribution: ctx.attribution,
+          payer,
           idempotent: true,
         };
       }
@@ -217,5 +222,6 @@ export async function settle(req: SettleRequest, ctx: SettleContext): Promise<Se
     receipt,
     settleHeader: encodeSettleHeader(settleResp),
     attribution: ctx.attribution,
+    payer,
   };
 }

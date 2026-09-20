@@ -356,6 +356,16 @@ the earlier receipt is returned with `"idempotent": true`. A settled nonce
 presented with a different signature is `402 nonce_replayed`; a signature that
 already bought a receipt for another nonce is `402 signature_reused`.
 
+### `X-Vendx-Agent-Id` (with the web secret)
+
+When the website's server buys on behalf of one of a user's agents — the remote
+MCP server at `/api/mcp` does this on every `vendx_buy_reading` — it sends
+`x-vendx-web-secret`, `x-vendx-user-id` **and** `x-vendx-agent-id` (a
+`vendx_agents.id`). The sale is then attributed to both the account and the
+agent (`vendx_sales.user_id`, `vendx_sales.agent_id`); the agent id is ignored
+unless the secret matches, and a dangling id is nulled by
+`vendx_record_settlement` (migration 0004) rather than failing the settlement.
+
 ## GET /api/directory
 
 Every relay and device that has heartbeated into the store, across all relays

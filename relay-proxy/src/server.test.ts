@@ -364,6 +364,39 @@ test("GET /api/policy → 200 with correct cap/limit values and today's date", a
   assert.equal(body.date, today);
 });
 
+test('GET /api/policy?payer= → per-wallet spend from settled sales, zero for a stranger', async () => {
+  // Trust mode (these tests) records every payer as 'unverified'; the filter
+  // mechanics are the same as for a real wallet in verify mode. Own nonce and
+  // a fresh txSignature: the relay refuses to settle a signature twice.
+  const r1 = await get('/api/telemetry');
+  assert.equal(r1.status, 402);
+  const { nonce } = (await r1.json()) as { nonce: string };
+  const r2 = await post(
+    '/settle',
+    JSON.stringify({ nonce, txSignature: `SimTx_payer_${Date.now()}`, payTo: VENDOR_WALLET, amount: '100', network: 'solana-devnet' }),
+  );
+  assert.equal(r2.status, 200);
+  const mine = (await (await get('/api/policy?payer=unverified')).json()) as {
+    payersVerified: boolean;
+    payer: { wallet: string; spentMicroUsdc: string; remainingMicroUsdc: string; sales: number; date: string };
+  };
+  assert.equal(mine.payersVerified, false);
+  assert.equal(mine.payer.wallet, 'unverified');
+  assert.ok(mine.payer.sales >= 1);
+  assert.ok(BigInt(mine.payer.spentMicroUsdc) >= 100n);
+  assert.equal(BigInt(mine.payer.spentMicroUsdc) + BigInt(mine.payer.remainingMicroUsdc), 5_000_000n);
+  assert.equal(mine.payer.date, new Date().toISOString().slice(0, 10));
+
+  const stranger = (await (await get('/api/policy?payer=11111111111111111111111111111111')).json()) as {
+    payer: { spentMicroUsdc: string; sales: number };
+  };
+  assert.equal(stranger.payer.spentMicroUsdc, '0');
+  assert.equal(stranger.payer.sales, 0);
+
+  const plain = (await (await get('/api/policy')).json()) as { payer?: unknown };
+  assert.equal(plain.payer, undefined);
+});
+
 test('GET /api/ledger → 200 with programId, network, deployed, entries, compressionNote', async () => {
   const res = await get('/api/ledger');
   assert.equal(res.status, 200);
@@ -526,4 +559,26 @@ test('GET /api/directory lists this relay and its device after the first heartbe
   assert.equal(body.relays[0].state, 'live');
   const devices = (await (await get('/api/devices')).json()) as { devices: Array<{ id: string }> };
   assert.equal(body.devices[0].id, devices.devices[0].id);
+});
+
+test('POST /settle with the web secret + x-vendx-agent-id → sale attributed to that agent', async () => {
+  process.env.VENDX_WEB_SECRET = 'test-web-secret';
+  try {
+    const r1 = await get('/api/telemetry');
+    const { nonce } = (await r1.json()) as { nonce: string };
+    const r2 = await settleWithHeaders(nonce, `SimTx_webagent_${nonce.slice(0, 6)}`, {
+      'x-vendx-web-secret': 'test-web-secret',
+      'x-vendx-user-id': TEST_AGENT.userId,
+      'x-vendx-agent-id': TEST_AGENT.id,
+    });
+    assert.equal(r2.status, 200);
+    const settled = (await r2.json()) as { attribution: string };
+    assert.equal(settled.attribution, 'web');
+    const p = await get('/api/me/purchases', { [AGENT_KEY_HEADER]: TEST_KEY });
+    const pBody = (await p.json()) as { purchases: Array<{ nonce: string; agentId?: string | null }> };
+    const mine = pBody.purchases.find((x) => x.nonce === nonce);
+    assert.ok(mine, 'the web-side purchase is listed under the named agent');
+  } finally {
+    delete process.env.VENDX_WEB_SECRET;
+  }
 });

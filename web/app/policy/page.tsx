@@ -2,7 +2,11 @@ import PageShell from '@/components/PageShell';
 import { Panel, Readout } from '@/components/Panel';
 import { RelayOffline } from '@/components/RelayOffline';
 import { RelayDark } from '@/components/RelayTag';
+import { cookies } from 'next/headers';
 import { fetchPolicy, MULTI_RELAY } from '@/lib/relay';
+import { SESSION_COOKIE, verifyToken, type SessionClaims } from '@/lib/server/session';
+import { shortAddress } from '@/lib/wallet/siws';
+import { formatUsdc, formatPercent } from '@/lib/usdc';
 
 const DAY_CAP_USD = 5.0;
 
@@ -17,9 +21,12 @@ function ArcGauge({ spentMicro, capMicro }: { spentMicro: string; capMicro: stri
 
   const r = 70, cx = 100, cy = 90;
   const bg = `M ${cx - r} ${cy} A ${r} ${r} 0 1 0 ${cx + r} ${cy}`;
-  const ex = cx + r * Math.cos(Math.PI - pct * Math.PI);
-  const ey = cy - r * Math.sin(pct * Math.PI);
-  const fg = pct > 0.001 ? `M ${cx - r} ${cy} A ${r} ${r} 0 0 0 ${ex} ${ey}` : '';
+  // A single 100 µUSDC read is 0.002% of the cap: invisible as an arc. Any
+  // spend at all draws at least a sliver so the gauge visibly reacts.
+  const drawPct = spent > 0 ? Math.max(pct, 0.006) : 0;
+  const dx = cx + r * Math.cos(Math.PI - drawPct * Math.PI);
+  const dy = cy - r * Math.sin(drawPct * Math.PI);
+  const fg = drawPct > 0 ? `M ${cx - r} ${cy} A ${r} ${r} 0 0 0 ${dx} ${dy}` : '';
 
   return (
     <div className="flex flex-col items-center gap-6 px-4 py-8">
@@ -30,16 +37,16 @@ function ArcGauge({ spentMicro, capMicro }: { spentMicro: string; capMicro: stri
         </svg>
         <div className="absolute inset-0 flex flex-col items-center justify-end pb-1">
           <div className="readout  leading-none" style={{ fontSize: '2.25rem', color: remaining < 0.5 ? '#b93a2e' : '#141414' }}>
-            {remaining.toFixed(2)}
+            {formatUsdc(remaining)}
           </div>
           <div className="plate mt-1.5">USDC left today</div>
         </div>
       </div>
 
       <div className="grid w-full grid-cols-3 border-t border-rule">
-        <Readout label="spent" value={spent.toFixed(4)} tone="amber" size="sm" />
-        <div className="panel-divide-x"><Readout label="daily cap" value={cap.toFixed(2)} size="sm" /></div>
-        <div className="panel-divide-x"><Readout label="used" value={`${(pct * 100).toFixed(1)}%`} tone={pct >= 0.85 ? 'alarm' : 'ink'} size="sm" /></div>
+        <Readout label="spent" value={formatUsdc(spent)} tone="amber" size="sm" />
+        <div className="panel-divide-x"><Readout label="daily cap" value={formatUsdc(cap)} size="sm" /></div>
+        <div className="panel-divide-x"><Readout label="used" value={formatPercent(pct)} tone={pct >= 0.85 ? 'alarm' : 'ink'} size="sm" /></div>
       </div>
       <p className="plate">resets at midnight UTC</p>
     </div>
@@ -55,10 +62,20 @@ const RULES: [string, string][] = [
   ['Network', 'solana-devnet only, in simulator mode'],
 ];
 
+/** The logged-in wallet, from the same HMAC cookie /api/me trusts; null when signed out. */
+async function sessionWallet(): Promise<string | null> {
+  const jar = await cookies();
+  const claims = verifyToken<SessionClaims>(jar.get(SESSION_COOKIE)?.value);
+  return claims && claims.v === 1 && typeof claims.w === 'string' ? claims.w : null;
+}
+
 export default async function PolicyPage() {
-  const result = await fetchPolicy();
+  const wallet = await sessionWallet();
+  const result = await fetchPolicy(wallet ?? undefined);
   // One policy per relay: the budget is the buyer agent's on that relay's
-  // machine, so two relays mean two gauges, never one summed number.
+  // machine, so two relays mean two gauges, never one summed number. A
+  // logged-in wallet gets its own gauge per relay: what THAT wallet paid
+  // through the site today, from the relay's settled sales.
   const policies = result.ok ? result.data : [];
   // `denials` is undefined when the relay does not serve a log — distinct from an empty one.
   const denials = policies[0]?.denials;
@@ -74,11 +91,39 @@ export default async function PolicyPage() {
           <RelayOffline path="/api/policy" reason={result.reason} />
         ) : (
           <>
-            {policies.map((p) => (
-              <Panel key={p.relay.key} label={MULTI_RELAY ? `Today's spend · ${p.relay.label}` : "Today's spend"} live>
-                <ArcGauge spentMicro={p.spentMicroUsdc} capMicro={p.dailyCapMicroUsdc} />
-              </Panel>
-            ))}
+            {policies.map((p) => {
+              const suffix = MULTI_RELAY ? ` · ${p.relay.label}` : '';
+              return (
+                <div key={p.relay.key} className="flex flex-col gap-5">
+                  {wallet && (
+                    <Panel label={`Your spend today · ${shortAddress(wallet)}${suffix}`} live={!!p.wallet}>
+                      {p.wallet ? (
+                        <>
+                          <ArcGauge spentMicro={p.wallet.spentMicroUsdc} capMicro={p.dailyCapMicroUsdc} />
+                          <p className="plate panel-divide px-4 py-3" data-policy="wallet-note">
+                            {p.wallet.sales} sale{p.wallet.sales === 1 ? '' : 's'} settled by this relay for your wallet since it started
+                            {p.payersVerified === false ? ' — relay in trust mode: payers are not read from the chain' : ''}
+                          </p>
+                        </>
+                      ) : (
+                        <p className="plate px-4 py-6" data-policy="wallet-note">
+                          {p.payersVerified === false
+                            ? 'This relay signs receipts on trust and never reads who paid, so it cannot attribute spend to a wallet.'
+                            : 'This relay does not report per-wallet spend yet — restart it on the current build.'}
+                        </p>
+                      )}
+                    </Panel>
+                  )}
+                  <Panel label={`Agent budget · agent-buyer${suffix}`} live>
+                    <ArcGauge spentMicro={p.spentMicroUsdc} capMicro={p.dailyCapMicroUsdc} />
+                    <p className="plate panel-divide px-4 py-3">
+                      the autonomous buyer&apos;s own ledger (data/spend-ledger.json); payments you make with Phantom on /agent are yours, not the agent&apos;s
+                      {!wallet ? ' — connect Phantom (top right) to see your wallet\u2019s spend' : ''}
+                    </p>
+                  </Panel>
+                </div>
+              );
+            })}
             {result.failed.map((f) => (
               <Panel key={f.relay.key} label={`Today's spend · ${f.relay.label}`}>
                 <RelayDark relay={f.relay} message={f.message} />

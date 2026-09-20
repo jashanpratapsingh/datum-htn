@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import AuthStatus from './auth/AuthStatus';
+import { WalletPill } from '@/components/wallet/WalletPill';
 
 const LINKS = [
   { href: '/devices', label: 'Devices' },
@@ -11,6 +12,7 @@ const LINKS = [
   { href: '/ledger', label: 'Ledger' },
   { href: '/protocol', label: 'Protocol' },
   { href: '/docs', label: 'Docs' },
+  { href: '/connect', label: 'Connect' },
   { href: '/account', label: 'Account' },
 ];
 
@@ -82,7 +84,8 @@ export default function NavBar() {
           ))}
         </nav>
 
-        <div className="hidden md:flex md:items-center">
+        <div className="hidden items-center gap-3 md:flex">
+          <WalletPill />
           <AuthStatus />
         </div>
 
@@ -137,7 +140,8 @@ export default function NavBar() {
               {l.label}
             </a>
           ))}
-          <div className="mt-1">
+          <div className="mt-1 flex flex-col gap-2 self-start">
+            <WalletPill variant="menu" />
             <AuthStatus compact />
           </div>
           <button

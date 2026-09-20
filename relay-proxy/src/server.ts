@@ -8,7 +8,7 @@ import { captureScreen, screenEnabled } from './badge-screen.js';
 import { settle, SETTLEMENT_MODE, type Attribution, type SettleRequest } from './facilitator.js';
 import { createStoreFromEnv, StoreUnavailableError, type Store } from './store/index.js';
 import { getRelayIdentity } from './identity.js';
-import { AGENT_KEY_HEADER, WEB_SECRET_HEADER, WEB_USER_HEADER, resolveAgent, type AgentResolution } from './agent-auth.js';
+import { AGENT_KEY_HEADER, WEB_AGENT_HEADER, WEB_SECRET_HEADER, WEB_USER_HEADER, resolveAgent, type AgentResolution } from './agent-auth.js';
 import { deviceState, getHeartbeatState, startHeartbeat } from './heartbeat.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -22,7 +22,7 @@ const VENDX_PROGRAM_ID = 'VnDXzkZKqiG2X8kGBJYDqExQEuCz9TnshCHsf2WVEoY';
 /** Must match DAY_CAP_MICRO_USDC in agent-buyer/src/policy.ts. */
 const DAY_CAP_MICRO_USDC = 5_000_000n;
 
-const ALLOW_HEADERS = ['Content-Type', 'X-Payment-Receipt', 'X-Payment', AGENT_KEY_HEADER, WEB_SECRET_HEADER, WEB_USER_HEADER].join(', ');
+const ALLOW_HEADERS = ['Content-Type', 'X-Payment-Receipt', 'X-Payment', AGENT_KEY_HEADER, WEB_SECRET_HEADER, WEB_USER_HEADER, WEB_AGENT_HEADER].join(', ');
 
 const solscanUrl = (sig: string) => `https://solscan.io/tx/${sig}?cluster=devnet`;
 
@@ -202,6 +202,8 @@ export function createRelayServer(port = DEFAULT_PORT, opts: RelayServerOptions 
           deviceId: telemetry.deviceId,
           agent: who.status === 'ok' ? who.agent : null,
           userId: who.status === 'web' ? who.userId : null,
+          // The website buying for one of its user's agents (an MCP connection).
+          agentId: who.status === 'web' ? who.agentId ?? null : null,
         },
         attribution: attributionOf(who),
       });
@@ -295,11 +297,37 @@ export function createRelayServer(port = DEFAULT_PORT, opts: RelayServerOptions 
       });
     }
 
-    // GET /api/policy — APEX spend policy state
+    // GET /api/policy — APEX spend policy state.
+    //
+    // The top-level numbers are the buyer AGENT's budget: agent-buyer writes
+    // data/spend-ledger.json when it pays, and nothing else does. A person
+    // paying through the site with Phantom is a different payer, so their
+    // spend is answered separately: ?payer=<wallet> adds a `payer` block
+    // computed from this relay's settled sales for that wallet today (the
+    // newest 1000 in the store), and in trust mode every payer is 'unverified'
+    // (the chain was never read).
     if (req.method === 'GET' && pathname === '/api/policy') {
       const ledger = readSpendLedger();
       const spent = BigInt(ledger.spentMicroUsdc);
       const remaining = spent >= DAY_CAP_MICRO_USDC ? 0n : DAY_CAP_MICRO_USDC - spent;
+      const today = new Date().toISOString().slice(0, 10);
+      const payerWallet = url.searchParams.get('payer');
+      let payer: Record<string, unknown> | undefined;
+      if (payerWallet) {
+        const utcDay = (t: number) => new Date(t * 1000).toISOString().slice(0, 10);
+        const mine = (await store.listSales({ limit: 1000 })).filter((s) => s.payer === payerWallet && utcDay(s.timestamp) === today);
+        const payerSpent = mine.reduce((sum, s) => sum + BigInt(s.amountMicroUsdc), 0n);
+        const payerRemaining = payerSpent >= DAY_CAP_MICRO_USDC ? 0n : DAY_CAP_MICRO_USDC - payerSpent;
+        payer = {
+          wallet: payerWallet,
+          spentMicroUsdc: payerSpent.toString(),
+          remainingMicroUsdc: payerRemaining.toString(),
+          sales: mine.length,
+          lastSaleAt: mine[0]?.timestamp ?? null,
+          date: today,
+          sinceRelayStart: true,
+        };
+      }
       return json(res, 200, {
         capMicroUsdc: DAY_CAP_MICRO_USDC.toString(),
         spentMicroUsdc: spent.toString(),
@@ -310,6 +338,8 @@ export function createRelayServer(port = DEFAULT_PORT, opts: RelayServerOptions 
         remainingUsd: Number(remaining) / 1_000_000,
         perRequestLimitMicroUsdc: '100',
         perVendorLimitMicroUsdc: '1000000',
+        payersVerified: SETTLEMENT_MODE === 'verify',
+        ...(payer ? { payer } : {}),
       });
     }
 

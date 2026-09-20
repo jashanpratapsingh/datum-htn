@@ -101,8 +101,8 @@ repo root. Where each value lives:
 | Where | File | Holds |
 | --- | --- | --- |
 | relay (laptop) | `~/.vendx/relay.env` (chmod 600, sourced by `scripts/relay.sh`) | `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, `VENDX_WEB_SECRET`, `VENDX_RELAY_LABEL` |
-| web (local) | `web/.env.local` | `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, `NEXT_PUBLIC_RELAY_URL`, `VENDX_WEB_BUYER_KEYPAIR`, `VENDX_WEB_SECRET` |
-| web (Vercel) | project settings, prod + preview + development | the same five |
+| web (local) | `web/.env.local` | `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, `NEXT_PUBLIC_RELAY_URL`, `VENDX_WEB_BUYER_KEYPAIR`, `VENDX_WEB_SECRET`; Phantom login: `SESSION_SECRET`, `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `NEXT_PUBLIC_SOLANA_RPC_URL`, optional `SIWS_ALLOWED_DOMAINS` |
+| web (Vercel) | project settings, prod + preview + development | the same set |
 | buyer / MCP | shell env or `claude mcp add -e …` | `RELAY_URL`, `VENDX_API_KEY`, optional `VENDX_BUYER_KEYPAIR` |
 
 Keys come from the CLI without pasting them into a terminal transcript:
@@ -154,28 +154,87 @@ curl -s -o /dev/null -w '%{http_code}\n' -H "x-payment-receipt: $R" localhost:34
 curl -s -H "x-payment-receipt: $R" localhost:3402/api/telemetry                                     # {"error":"nonce_replayed"}
 ```
 
-## Accounts, agent API keys and the MCP server
+## Connecting a coding agent (remote MCP server)
 
-1. Sign up on the site (`/login`, email + password, no confirmation mail) and
-   open **Account**.
-2. **Register agent** mints `vendx_sk_…`, shown once. The page prints the
-   install commands with the key filled in:
+The website IS the MCP server: `https://vendx.biz/api/mcp` (the vercel.app alias
+serves the same thing; every URL below derives from the host you visit) — Streamable HTTP,
+stateless) plus its own OAuth 2.1 authorization server. `/connect` prints the
+one-liners; the flow for a buyer is:
 
-   ```bash
-   git clone https://github.com/jashanpratapsingh/vendx-htn.git && cd vendx-htn
-   npm install && npm run build -w @vendx/protocol && npm run build -w @vendx/agent-buyer
-   claude mcp add -s user -e VENDX_API_KEY=vendx_sk_… -e RELAY_URL=https://relay.vendx.biz vendx -- node "$PWD/agent-buyer/dist/mcp.js"
-   ```
+1. **Install.** Claude Code: `claude mcp add --transport http --scope user vendx https://<site>/api/mcp`,
+   then `/mcp` → vendx → Authenticate. Codex: `codex mcp add vendx --url …` +
+   `codex mcp login vendx`. Cursor: the deep link on `/connect` or `.cursor/mcp.json`.
+   The first call gets `401` + `WWW-Authenticate: … resource_metadata=…`; the
+   client reads `/.well-known/oauth-protected-resource/api/mcp`, then
+   `/.well-known/oauth-authorization-server`, registers itself at
+   `/api/oauth/register` (loopback or https redirect URIs only) and opens the browser.
+2. **Approve** at `/oauth/authorize`: sign in (Phantom first, email fallback —
+   both are one Supabase auth user, see migration 0006), pick or name the agent,
+   set a per-reading and a daily cap. Approving creates the agent
+   (`vendx_create_agent_oauth`, no API key), its custodial Solana wallet
+   (`vendx_agent_wallets`, secret sealed with `VENDX_WALLET_KEK`) and a 10-minute
+   code bound to the client's PKCE challenge.
+3. **Fund** at `/oauth/authorize/done`: one Phantom transaction sends devnet USDC
+   (what readings cost) and a little SOL (what transactions cost) to the agent
+   wallet, then "Continue" hands the code back to the client, which exchanges it
+   at `/api/oauth/token` for a 1 h access token and a 30 d refresh token
+   (rotated on every use; a replayed refresh token revokes the whole family).
+4. **Buy.** Tools: `vendx_list_devices` (Supabase directory), `vendx_buy_reading`
+   (402 → reserve against the caps in Postgres → pay from the agent wallet →
+   `/settle` with `x-vendx-web-secret` + `x-vendx-user-id` + `x-vendx-agent-id`
+   → redeem → `vendx_readings`), `vendx_reading_history` (with stats),
+   `vendx_budget_status`, `vendx_transactions`. The wallet balance is the hard
+   budget; the caps are checked by `vendx_reserve_spend` (row lock on the agent)
+   before any transfer, so parallel tool calls cannot overspend.
+5. **See it** on `/account`: agents with wallet balances, caps (editable),
+   sessions, activity-over-time per device, spend per hour, transactions with
+   Solscan links. Revoking an agent revokes every token it had; the next call
+   is a 401 before any money moves.
 
-3. In Claude Code: `vendx_wallet` (creates `~/.vendx/buyer-devnet.json` if the
-   Solana CLI key is absent, prints the address and how to fund it with devnet
-   SOL and Circle devnet USDC), `vendx_list_devices`, `vendx_buy_reading`
-   (real USDC, ~100 µUSDC), `vendx_my_purchases`.
-4. Purchases appear under **Account → Purchases**, on `/marketplace` and
-   `/ledger`. Revoking an agent makes the relay refuse its key with 401 before
-   any payment.
+Static-key alternative (no browser step): **Register agent** on `/account`
+mints `vendx_sk_…` once; use it as a bearer header —
+`claude mcp add --transport http vendx https://<site>/api/mcp --header "Authorization: Bearer vendx_sk_…"`
+(`/account` prints the Codex and Cursor forms too). The stdio server in
+`agent-buyer/dist/mcp.js` still works for self-custody buyers who want to pay
+from their own keypair.
 
-CLI alternative: `RELAY_URL=https://relay.vendx.biz VENDX_API_KEY=vendx_sk_… node agent-buyer/dist/index.js`.
+Smoke test from a shell: `MCP_URL=https://<site>/api/mcp VENDX_API_KEY=vendx_sk_… node scripts/mcp-smoke.mjs`
+(`SMOKE_BUY=1` also buys one reading, ~100 µUSDC). It never prints the key.
+
+### Agent wallets and the KEK
+
+`VENDX_WALLET_KEK` (32 bytes, base64; `openssl rand -base64 32`) seals every
+agent wallet's secret key with AES-256-GCM (`web/lib/wallet/keystore.ts`). It
+lives on Vercel and in `~/.vendx/web-mcp.env`, never in git. Losing it strands
+every agent wallet; the same value must be used by every deployment that
+serves `/api/mcp`. Rows record `kek_id` (first 8 hex of sha256(kek)) so a
+rotation can re-seal them. Wallets are created lazily (consent page, or the
+first tool call of a key-registered agent).
+
+### Deploying: `scripts/deploy.sh`
+
+```bash
+scripts/deploy.sh check          # tooling, logins (vercel/gh as jashanpratapsingh), env NAMES in ~/.vendx/web-mcp.env
+scripts/deploy.sh migrate        # supabase migration list + db push --linked
+scripts/deploy.sh env preview    # push the env file to Vercel production + preview (values never echoed)
+scripts/deploy.sh build          # protocol → tarball if changed → relay tests → web unit tests → next build
+scripts/deploy.sh preview        # vercel deploy → preview URL → verify against it
+scripts/deploy.sh release        # push, PR, merge → git-linked Vercel builds main into production → verify
+scripts/deploy.sh relay          # restart the laptop relay from THIS checkout (Supabase-backed, verify mode)
+scripts/deploy.sh verify [url]   # discovery docs, 401 hint, mcp-smoke.mjs with the key in ~/.vendx/mcp-smoke.env
+```
+
+The relay at `relay.vendx.biz` must run the Supabase-backed build for the
+marketplace directory to have devices in it; `scripts/deploy.sh relay` (or
+`scripts/relay.sh up` from an up-to-date checkout) does that.
+
+### Background stack: `scripts/stack.sh` (tmux)
+
+`scripts/stack.sh up [--web]` opens a tmux session `vendx` with windows
+`relay` (real mode via relay.sh), `tunnel` (cloudflared), `smoke` (the MCP
+smoke test against production every 5 min) and optionally `web` (`next dev`).
+`status` prints relay, tunnel and production-MCP health; `attach`, `logs
+<win>`, `down`.
 
 ## Buying from the website
 
@@ -238,6 +297,65 @@ vercel --prod
 Set the environment variables in the Vercel dashboard. The `NEXT_PUBLIC_*`
 variables are baked in at build time; server-side variables (`SUPABASE_SERVICE_KEY`)
 are injected at runtime.
+
+The Phantom login needs four of them on Vercel (production and preview):
+`SESSION_SECRET`, `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `NEXT_PUBLIC_SOLANA_RPC_URL`.
+Without `SESSION_SECRET` the auth routes throw on Vercel by design (a random
+per-process secret would log everyone out on every cold start). Without the
+Supabase pair, login still works and the response carries
+`warning: "accounts_unavailable"`.
+
+## Phantom login (web)
+
+One pill in the navbar, top right, for vendors and customers alike.
+
+1. **Connect Phantom** → the site asks `POST /api/auth/nonce` for a Sign In
+   With Solana input (domain, statement, nonce, issuedAt) and hands it to
+   Phantom's `signIn`. One popup: connect and sign together. Older Phantom
+   builds without `signIn` fall back to `connect` + `signMessage` (two popups).
+2. `POST /api/auth/verify` checks the Ed25519 signature over the exact bytes
+   Phantom signed, parses them back into fields, and compares domain, address,
+   nonce (from the 5-minute `vendx_siws` cookie) and issue time. Then it sets
+   `vendx_session` (httpOnly, SameSite=Lax, 7 days, HMAC-signed, stateless) and
+   calls `vendx_touch_account` in Supabase (`supabase/migrations/0002_accounts.sql`:
+   wallet, first_seen, last_seen, login_count, last_domain, last_method).
+3. The pill shows the truncated address and the wallet's **devnet SOL and USDC**,
+   read in the browser from `NEXT_PUBLIC_SOLANA_RPC_URL` every 30 s while the
+   tab is visible. Click it for the full address, balances, role and Disconnect.
+4. **Coming back**: the cookie restores the login on the server, and the page
+   calls `connect({ onlyIfTrusted: true })` so Phantom re-attaches silently. If
+   Phantom reports a different account, or the user disconnects in the
+   extension, the site logs out rather than show one wallet while another signs.
+5. **Role** is derived, never stored: a wallet is a *vendor* when some relay's
+   `/api/devices` lists a registered device whose `payTo` is that wallet; anyone
+   else is a *visitor*.
+6. **Paying**: on `/agent`, a connected wallet pays the 402 for real — the page
+   builds the same transaction `agent-buyer` sends (idempotent ATA create,
+   `transferChecked` USDC, Memo = nonce), Phantom signs and sends it, the page
+   waits for `confirmed`, then `/settle` verifies it on-chain. Disconnected
+   visitors still get the simulated run, labelled as such, which a verifying
+   relay refuses with `payment_not_found`.
+
+Tests: `web/tests/wallet.spec.ts` drives the real routes through a Phantom
+mock that signs with a real Ed25519 key (`web/tests/helpers/mock-phantom.ts`).
+The live-payment test runs only with `VENDX_E2E_KEYPAIR=<funded devnet keypair>`
+and a relay up; it moves real devnet USDC.
+
+## One-command dev stack
+
+```bash
+scripts/dev.sh up            # relay-proxy (demo: simulator + trust) on :3402, next dev on :3000
+scripts/dev.sh up real       # relay.sh up: badge poll + on-chain verification
+scripts/dev.sh status        # /health, :3000, who owns what
+scripts/dev.sh logs          # tail ~/.vendx/relay.log and ~/.vendx/web-dev.log
+scripts/dev.sh down          # stops the web dev server; stops the relay only if dev.sh started it
+```
+
+Env comes from `~/.vendx/dev.env` (created from `scripts/dev.env.example` on
+the first run; fill in `SUPABASE_SERVICE_KEY` and `SESSION_SECRET`). A relay
+that `scripts/relay.sh` already runs on :3402 is adopted, not restarted — pass
+`--restart` to switch modes. Anything else holding :3402 or :3000 is reported
+and left alone.
 
 ## Troubleshooting
 
