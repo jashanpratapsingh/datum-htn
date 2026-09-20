@@ -180,9 +180,8 @@ export default async function DeviceDetailPage({ params }: { params: Promise<{ i
           <Panel label="Readouts">
             <div className="grid grid-cols-2 md:grid-cols-3">
               <Readout label="threshold" value={d.threshold != null ? d.threshold.toFixed(2) : '—'} size="sm" />
-              <div className="panel-divide-x"><Readout label="csi occupancy" value={d.csiOccupancy != null ? d.csiOccupancy.toFixed(2) : '—'} size="sm" /></div>
-              <div className="panel-divide md:panel-divide-x md:border-t-0"><Readout label="calibrated" value={d.ready == null ? '—' : d.ready ? 'yes' : 'no'} size="sm" /></div>
-              <div className="panel-divide"><Readout label="firmware" value={d.firmware ?? '—'} size="sm" /></div>
+              <div className="panel-divide-x"><Readout label="calibrated" value={d.ready == null ? '—' : d.ready ? 'yes' : 'no'} size="sm" /></div>
+              <div className="panel-divide md:panel-divide-x md:border-t-0"><Readout label="firmware" value={d.firmware ?? '—'} size="sm" /></div>
             </div>
           </Panel>
         </div>

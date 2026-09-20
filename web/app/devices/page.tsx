@@ -129,8 +129,8 @@ function SensorRow({ sensor }: { sensor: SensorEntry }) {
           <dd className="readout text-sm text-ink/80">{sensor.threshold != null ? sensor.threshold.toFixed(2) : '—'}</dd>
         </div>
         <div>
-          <dt className="plate mb-1">csi occupancy</dt>
-          <dd className="readout text-sm text-ink/80">{sensor.csiOccupancy != null ? sensor.csiOccupancy.toFixed(2) : '—'}</dd>
+          <dt className="plate mb-1">firmware</dt>
+          <dd className="readout text-sm text-ink/80">{sensor.firmware ?? '—'}</dd>
         </div>
         <div>
           <dt className="plate mb-1">calibrated</dt>

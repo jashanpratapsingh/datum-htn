@@ -109,7 +109,6 @@ export interface SensorEntry {
   firmware?: string;
   motionState?: 'idle' | 'motion';
   threshold?: number;
-  csiOccupancy?: number;
   ready?: boolean;
   online: boolean;
   lastSeen: number;
@@ -205,7 +204,6 @@ interface WireSensorSnapshot {
   url: string;
   motionState?: 'idle' | 'motion';
   threshold?: number;
-  csiOccupancy?: number;
   ready?: boolean;
   online: boolean;
   lastSeen: number;
@@ -302,7 +300,6 @@ function sensorToEntry(relay: RelayInfo, s: WireSensorSnapshot): SensorEntry {
     firmware: s.firmware,
     motionState: s.motionState,
     threshold: s.threshold,
-    csiOccupancy: s.csiOccupancy,
     ready: s.ready,
     online: s.online,
     lastSeen: s.lastSeen,
