@@ -7,6 +7,7 @@ import { hasSupabaseEnv } from '@/lib/supabase/env';
 import { displayNameOf, walletOfUser } from '@/lib/auth/user';
 import { signOut } from '@/app/auth/actions';
 import { usePhantom } from '@/components/wallet/WalletProvider';
+import { CONTACT_EMAIL } from '@/lib/site';
 
 /**
  * Who is signed in, in the nav. Self-hydrating so NavBar can stay a plain
@@ -47,7 +48,7 @@ export default function AuthStatus({ compact = false }: { compact?: boolean }) {
   if (!user) {
     if (!hasSupabaseEnv()) {
       return (
-        <a href="mailto:hello@vendx.dev" className={linkClass}>
+        <a href={`mailto:${CONTACT_EMAIL}`} className={linkClass}>
           Get in touch
         </a>
       );
