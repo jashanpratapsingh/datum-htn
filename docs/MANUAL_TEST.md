@@ -1,51 +1,36 @@
 # Manual test checklist — VENDX remaining gaps
 
-## Step 1 — Public relay (DONE on laptop; you finish Vercel)
+See also `docs/PARTNER.md` for copy/paste texts to partners.
+
+## Step 1 — Public relay (DONE on laptop; partner finishes Vercel)
 
 Tunnel URL right now:
 ```
 https://utilization-hints-approx-excited.trycloudflare.com
 ```
 
-**Already verified by agent:**
-- Local `GET /health` → ok
-- Tunnel `GET /health` → ok
+**Already verified:**
+- Local + tunnel `GET /health` → ok
 - Tunnel `GET /api/telemetry` → 402
-- Tunnel `GET /api/sales` → `{"sales":[]}`
-- Startup log: `mode: simulator  serial=COM3` (honest)
+- Startup log honest (`mode: simulator serial=COM3`)
 
-**You do:**
-1. Keep the laptop relay + tunnel running (`node relay-proxy/dist/index.js` and `npm run tunnel`).
-2. In a browser (phone is fine): open  
-   `https://utilization-hints-approx-excited.trycloudflare.com/health`  
-   Expect `{"status":"ok",…}`.
-3. Vercel → Settings → Environment Variables → set  
-   `NEXT_PUBLIC_RELAY_URL` = that URL (no trailing slash) → Redeploy Production.
-4. Open the live Vercel site → Devices / Marketplace should **not** show RelayOffline.
-
-If the tunnel URL changed after a restart, update Vercel again (quick tunnels are ephemeral).
+**You:** keep relay + tunnel up. **Partner A:** set Vercel env + redeploy (`docs/PARTNER.md`).
 
 ---
 
-## Step 2 — Real payment (blocked on funding — do this next)
+## Step 2 — Real payment (blocked on funding)
 
-Mock path already passed end-to-end (`VENDX_SETTLEMENT=mock npm run demo:solana`).
+Mock OK: `VENDX_SETTLEMENT=mock npm run demo:solana`
 
-**You fund:**
-1. Devnet SOL for fees → https://faucet.solana.com  
-   - Agent: `2aXFqqaPZcTxe8KWCGTEuBRWZ36Ke5S7qrgaBvtq55x2`  
-   - Treasury: `5eRPGbt3oxyjprqKFstoF8qsUfSCFSUDZ8pPaUC7AEpz`  
-   - Vendor: `3GwvCsZ69gUbmgai8orUNKZb6YJLWbAYdo1N9hSGsYyT`
-2. Devnet USDC → https://faucet.circle.com → Solana Devnet → treasury address above.
-3. Then run:
+After SOL + Circle USDC:
 ```bash
 npm run fund
 npm run allowance -- --cap 5
 VENDX_SETTLEMENT=devnet npm run demo:solana
+node scripts/demo-hardcap.mjs
 ```
-Expect a real Solscan tx (not `MOCK…`), receipt signed after chain verify, buyer gets DATA.
 
-Tell me when SOL+USDC are funded and I’ll finish the hard-cap demo + capture the rejection.
+Treasury: `5eRPGbt3oxyjprqKFstoF8qsUfSCFSUDZ8pPaUC7AEpz`
 
 ---
 
@@ -54,25 +39,40 @@ Tell me when SOL+USDC are funded and I’ll finish the hard-cap demo + capture t
 ```bash
 npm run xlang
 ```
-Expect:
-```
-PASS  valid receipt accepted
-PASS  tampered receipt rejected
-CLAIM: TypeScript signer and C tweetnacl verifier agree on host (not silicon).
-```
-On Mac: `firmware-vendor/test/run.sh` does the same with `cc`.
+Expect both PASS lines.
 
 ---
 
-## Step 4 — Persistence (in-memory proven; Supabase optional)
+## Step 4 — Persistence
 
 ```bash
 npm run test -w @vendx/relay-proxy
 ```
-Expect 50 pass (includes `persist.test.ts`).
+Expect 50 pass. Supabase optional (set `SUPABASE_URL` + `SUPABASE_SERVICE_KEY` + apply `0002_sales.sql`).
 
-To survive restarts:
-1. Apply `supabase/migrations/0002_sales.sql` on your project
-2. Set `SUPABASE_URL` + `SUPABASE_SERVICE_KEY` on the relay process
-3. Restart relay → log says `persistence: Supabase`
-4. Make a sale, restart, `GET /api/sales` still has it
+---
+
+## Step 5 — Ledger deploy (Mac partner)
+
+AirDrop `solana-ledger/target/deploy/vendx_zk-keypair.json`, then:
+```bash
+bash scripts/deploy-ledger.sh
+```
+Then on laptop:
+```bash
+VENDX_RPC_URL=https://api.devnet.solana.com node relay-proxy/dist/index.js
+curl -s localhost:3402/api/ledger
+```
+Expect `deployed: true`.
+
+---
+
+## Step 6 — Web restyle
+
+Already in git. Ships when Partner A redeploys with the tunnel URL.
+
+---
+
+## Step 7 — Docs + honest mode log
+
+Done. Restart relay and read the mode line.
