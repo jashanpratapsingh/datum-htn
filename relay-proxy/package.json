@@ -8,10 +8,11 @@
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "start": "node dist/index.js",
-    "test": "tsc -p tsconfig.json && VENDX_SETTLEMENT=trust node --test dist/server.test.js"
+    "test": "tsc -p tsconfig.json && VENDX_SETTLEMENT=trust VENDX_BADGE_PORT=/dev/cu.vendx-none node --test dist/server.test.js"
   },
   "dependencies": {
     "@solana/web3.js": "^1.99.0",
+    "@supabase/supabase-js": "^2.116.0",
     "@vendx/protocol": "*",
     "tweetnacl": "^1.0.3"
   },
