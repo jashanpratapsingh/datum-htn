@@ -560,3 +560,25 @@ test('GET /api/directory lists this relay and its device after the first heartbe
   const devices = (await (await get('/api/devices')).json()) as { devices: Array<{ id: string }> };
   assert.equal(body.devices[0].id, devices.devices[0].id);
 });
+
+test('POST /settle with the web secret + x-vendx-agent-id → sale attributed to that agent', async () => {
+  process.env.VENDX_WEB_SECRET = 'test-web-secret';
+  try {
+    const r1 = await get('/api/telemetry');
+    const { nonce } = (await r1.json()) as { nonce: string };
+    const r2 = await settleWithHeaders(nonce, `SimTx_webagent_${nonce.slice(0, 6)}`, {
+      'x-vendx-web-secret': 'test-web-secret',
+      'x-vendx-user-id': TEST_AGENT.userId,
+      'x-vendx-agent-id': TEST_AGENT.id,
+    });
+    assert.equal(r2.status, 200);
+    const settled = (await r2.json()) as { attribution: string };
+    assert.equal(settled.attribution, 'web');
+    const p = await get('/api/me/purchases', { [AGENT_KEY_HEADER]: TEST_KEY });
+    const pBody = (await p.json()) as { purchases: Array<{ nonce: string; agentId?: string | null }> };
+    const mine = pBody.purchases.find((x) => x.nonce === nonce);
+    assert.ok(mine, 'the web-side purchase is listed under the named agent');
+  } finally {
+    delete process.env.VENDX_WEB_SECRET;
+  }
+});

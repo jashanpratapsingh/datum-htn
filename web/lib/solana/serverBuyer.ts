@@ -76,8 +76,27 @@ export interface WebPayment {
   solscanUrl: string;
 }
 
-export async function payFromSharedWallet(opts: { payTo: string; amountMicroUsdc: string; nonce: string }): Promise<WebPayment> {
-  const payer = loadWebBuyer();
+/** SOL and USDC held by a wallet; usdcMicro is null when it has no USDC account yet. */
+export async function walletBalances(owner: PublicKey): Promise<{ lamports: bigint; usdcMicro: bigint | null }> {
+  const conn = new Connection(rpcUrl(), 'confirmed');
+  const ata = getAssociatedTokenAddressSync(new PublicKey(USDC_MINT_DEVNET), owner);
+  const [lamports, usdc] = await Promise.all([
+    conn.getBalance(owner, 'confirmed'),
+    conn.getTokenAccountBalance(ata, 'confirmed').then((r) => BigInt(r.value.amount)).catch(() => null),
+  ]);
+  return { lamports: BigInt(lamports), usdcMicro: usdc };
+}
+
+/**
+ * Pay one x402 offer from `payer`: idempotent ATA create for the vendor,
+ * transferChecked of the exact amount, Memo = challenge nonce. Used by the
+ * site's shared wallet and by every agent wallet the MCP server holds.
+ */
+export async function payFromKeypair(
+  payer: Keypair,
+  opts: { payTo: string; amountMicroUsdc: string; nonce: string; confirmMs?: number; who?: string },
+): Promise<WebPayment> {
+  const who = opts.who ?? 'the wallet';
   const conn = new Connection(rpcUrl(), 'confirmed');
   const mint = new PublicKey(USDC_MINT_DEVNET);
   const recipient = new PublicKey(opts.payTo);
@@ -88,10 +107,10 @@ export async function payFromSharedWallet(opts: { payTo: string; amountMicroUsdc
   try {
     balance = BigInt((await conn.getTokenAccountBalance(source, 'confirmed')).value.amount);
   } catch {
-    throw new BuyGuardError('buyer_unfunded', `the shared wallet ${payer.publicKey.toBase58()} has no devnet USDC account`);
+    throw new BuyGuardError('buyer_unfunded', `${who} ${payer.publicKey.toBase58()} has no devnet USDC account`);
   }
   if (balance < BigInt(opts.amountMicroUsdc)) {
-    throw new BuyGuardError('buyer_unfunded', `the shared wallet holds ${balance} µUSDC, offer needs ${opts.amountMicroUsdc}`);
+    throw new BuyGuardError('buyer_unfunded', `${who} holds ${balance} µUSDC, offer needs ${opts.amountMicroUsdc}`);
   }
 
   const tx = new Transaction().add(
@@ -100,9 +119,21 @@ export async function payFromSharedWallet(opts: { payTo: string; amountMicroUsdc
     new TransactionInstruction({ keys: [], programId: MEMO_PROGRAM_ID, data: Buffer.from(opts.nonce, 'utf8') }),
   );
 
-  const signature = await Promise.race([
-    sendAndConfirmTransaction(conn, tx, [payer], { commitment: 'confirmed' }),
-    new Promise<never>((_, reject) => setTimeout(() => reject(new BuyGuardError('confirm_timeout', 'devnet did not confirm within 45 s')), 45_000)),
-  ]);
-  return { signature, payer: payer.publicKey.toBase58(), solscanUrl: `https://solscan.io/tx/${signature}?cluster=devnet` };
+  const confirmMs = opts.confirmMs ?? 45_000;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const signature = await Promise.race([
+      sendAndConfirmTransaction(conn, tx, [payer], { commitment: 'confirmed' }),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new BuyGuardError('confirm_timeout', `devnet did not confirm within ${Math.round(confirmMs / 1000)} s`)), confirmMs);
+      }),
+    ]);
+    return { signature, payer: payer.publicKey.toBase58(), solscanUrl: `https://solscan.io/tx/${signature}?cluster=devnet` };
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+export async function payFromSharedWallet(opts: { payTo: string; amountMicroUsdc: string; nonce: string }): Promise<WebPayment> {
+  return payFromKeypair(loadWebBuyer(), { ...opts, who: 'the shared wallet' });
 }

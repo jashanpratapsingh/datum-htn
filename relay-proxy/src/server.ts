@@ -8,7 +8,7 @@ import { captureScreen, screenEnabled } from './badge-screen.js';
 import { settle, SETTLEMENT_MODE, type Attribution, type SettleRequest } from './facilitator.js';
 import { createStoreFromEnv, StoreUnavailableError, type Store } from './store/index.js';
 import { getRelayIdentity } from './identity.js';
-import { AGENT_KEY_HEADER, WEB_SECRET_HEADER, WEB_USER_HEADER, resolveAgent, type AgentResolution } from './agent-auth.js';
+import { AGENT_KEY_HEADER, WEB_AGENT_HEADER, WEB_SECRET_HEADER, WEB_USER_HEADER, resolveAgent, type AgentResolution } from './agent-auth.js';
 import { deviceState, getHeartbeatState, startHeartbeat } from './heartbeat.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -22,7 +22,7 @@ const VENDX_PROGRAM_ID = 'VnDXzkZKqiG2X8kGBJYDqExQEuCz9TnshCHsf2WVEoY';
 /** Must match DAY_CAP_MICRO_USDC in agent-buyer/src/policy.ts. */
 const DAY_CAP_MICRO_USDC = 5_000_000n;
 
-const ALLOW_HEADERS = ['Content-Type', 'X-Payment-Receipt', 'X-Payment', AGENT_KEY_HEADER, WEB_SECRET_HEADER, WEB_USER_HEADER].join(', ');
+const ALLOW_HEADERS = ['Content-Type', 'X-Payment-Receipt', 'X-Payment', AGENT_KEY_HEADER, WEB_SECRET_HEADER, WEB_USER_HEADER, WEB_AGENT_HEADER].join(', ');
 
 const solscanUrl = (sig: string) => `https://solscan.io/tx/${sig}?cluster=devnet`;
 
@@ -202,6 +202,8 @@ export function createRelayServer(port = DEFAULT_PORT, opts: RelayServerOptions 
           deviceId: telemetry.deviceId,
           agent: who.status === 'ok' ? who.agent : null,
           userId: who.status === 'web' ? who.userId : null,
+          // The website buying for one of its user's agents (an MCP connection).
+          agentId: who.status === 'web' ? who.agentId ?? null : null,
         },
         attribution: attributionOf(who),
       });

@@ -45,5 +45,7 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|mp4|webm|txt)$).*)'],
+  // Machine endpoints (MCP, OAuth, discovery) carry bearer tokens, not cookies:
+  // skip the session refresh there so every tool call does not pay for it.
+  matcher: ['/((?!_next/static|_next/image|favicon.ico|api/mcp|api/oauth|\\.well-known|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|mp4|webm|txt)$).*)'],
 };

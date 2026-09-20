@@ -59,6 +59,8 @@ export interface SettleContext {
     deviceId?: string;
     agent?: AgentRef | null;
     userId?: string | null;
+    /** Agent named by the website alongside the web secret (no key involved). */
+    agentId?: string | null;
   };
   attribution: Attribution;
 }
@@ -185,7 +187,7 @@ export async function settle(req: SettleRequest, ctx: SettleContext): Promise<Se
     relayId: ctx.sale.relayId,
     network,
     payer,
-    agentId: ctx.sale.agent?.id ?? null,
+    agentId: ctx.sale.agent?.id ?? ctx.sale.agentId ?? null,
     userId: ctx.sale.userId ?? ctx.sale.agent?.userId ?? null,
     receipt,
   });
