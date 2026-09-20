@@ -45,7 +45,8 @@ server.listen(PORT, () => {
   console.log(`[relay-proxy] listening on http://localhost:${PORT}`);
   console.log(
     '[relay-proxy] routes: GET /api/telemetry  POST /settle  GET /api/devices  GET /api/sales  GET /api/ledger  ' +
-      'GET /api/policy  GET /api/directory  GET /api/me  GET /api/me/purchases  GET /health',
+      'GET /api/policy  GET /api/directory  GET /api/me  GET /api/me/purchases  ' +
+      'POST /api/nodes/register  GET /api/nodes  GET /health',
   );
   console.log(`[relay-proxy] relay id: ${identity.relayId.slice(0, 16)}…  label: ${identity.label}  public url: ${identity.publicUrl}`);
   console.log(

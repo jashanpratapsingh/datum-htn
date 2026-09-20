@@ -63,6 +63,14 @@ is what VENDX actually sends.
 The nonce is what makes replay defence possible without the device holding a
 payment history. It is minted per challenge and burned on first use.
 
+`extra` is x402 v1's escape hatch and we use it in one place: a VENDX node
+(ESP32 serving this challenge itself) fills it with
+`{ "deviceId", "source": "esp32c3", "facilitator": "http://…" }` so the buyer
+knows which registered device minted the nonce and which relay can settle it.
+The relay's own challenges leave it `null`. Buyers must treat it as advisory:
+the relay signs over the node's *registered* wallet and price, not over
+anything in the challenge.
+
 ## 2. Payment — `X-PAYMENT` request header
 
 base64url of canonical JSON:
