@@ -1,7 +1,7 @@
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 import type { PaymentRequiredBody } from '@vendx/protocol';
-import { getSessionUser } from '@/lib/supabase/server';
+import { getViewer } from '@/lib/auth/viewer';
 import { PRIMARY_RELAY } from '@/lib/relays';
 import { resolveRelay } from '@/lib/relays.server';
 import { assertPayable, BuyGuardError, payFromSharedWallet } from '@/lib/solana/serverBuyer';
@@ -9,7 +9,8 @@ import { assertPayable, BuyGuardError, payFromSharedWallet } from '@/lib/solana/
 export const maxDuration = 60;
 
 /**
- * Buy one reading for the signed-in user with the site's shared devnet wallet.
+ * Buy one reading for the signed-in viewer (email or Phantom login) with the
+ * site's shared devnet wallet.
  *
  * Streams NDJSON: one `{step, status, detail}` line per handshake step (the
  * nine steps of the agent console) and a final `{done, result | error}`. The
@@ -39,10 +40,10 @@ type Line =
   | { done: true; error: string; message: string; step: number };
 
 export async function POST(req: NextRequest) {
-  const user = await getSessionUser();
-  if (!user) return NextResponse.json({ error: 'unauthenticated', message: 'sign in to buy from the shared wallet' }, { status: 401 });
+  const viewer = await getViewer();
+  if (!viewer) return NextResponse.json({ error: 'unauthenticated', message: 'sign in to buy from the shared wallet' }, { status: 401 });
 
-  const retry = rateLimited(user.id);
+  const retry = rateLimited(viewer.id);
   if (retry !== null) {
     return NextResponse.json({ error: 'rate_limited', message: `at most ${MAX_PER_WINDOW} purchases a minute per account`, retryAfter: retry }, { status: 429 });
   }
@@ -50,7 +51,10 @@ export async function POST(req: NextRequest) {
   const body = (await req.json().catch(() => ({}))) as { relay?: string };
   const relay = (await resolveRelay(body.relay)) ?? PRIMARY_RELAY;
   const webSecret = process.env.VENDX_WEB_SECRET;
-  const attribution: Record<string, string> = webSecret ? { 'x-vendx-web-secret': webSecret, 'x-vendx-user-id': user.id } : {};
+  // The relay records the sale against an auth.users id; a wallet with no
+  // account row (Supabase bridge unavailable) buys anonymously instead.
+  const attribution: Record<string, string> =
+    webSecret && viewer.userId ? { 'x-vendx-web-secret': webSecret, 'x-vendx-user-id': viewer.userId } : {};
 
   const encoder = new TextEncoder();
   const stream = new ReadableStream<Uint8Array>({

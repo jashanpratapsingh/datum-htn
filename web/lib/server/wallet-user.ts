@@ -1,8 +1,8 @@
 import 'server-only';
+import { createServerClient, type GetAllCookies, type SetAllCookies } from '@supabase/ssr';
 import type { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
-import { createSupabaseRoute } from '@/lib/supabase/route';
-import { hasSupabaseEnv } from '@/lib/supabase/env';
+import { hasSupabaseEnv, SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from '@/lib/supabase/env';
 
 /**
  * A Phantom wallet as a Supabase auth user.
@@ -14,6 +14,12 @@ import { hasSupabaseEnv } from '@/lib/supabase/env';
  * address nobody ever mails — and hands back a token hash. verifyOtp on a
  * cookie-bound client turns that hash into an ordinary Supabase session, so
  * from here on the wallet viewer and the email viewer are the same thing.
+ *
+ * The bridge runs at login (/api/auth/verify) and again from proxy.ts
+ * whenever a request carries a valid wallet cookie but no Supabase session:
+ * a cookie minted before the bridge existed, a Supabase session that expired
+ * before the 7-day wallet one, or a login that happened while Supabase was
+ * down. Either way the wallet stays signed in.
  *
  * Failures never block the SIWS login itself; callers get `null` and report
  * `warning: 'accounts_unavailable'` as they already do for vendx_accounts.
@@ -37,17 +43,35 @@ export interface WalletSession {
   created: boolean;
 }
 
+/** The auth.users id already recorded for `wallet`, or null when unknown or Supabase is off. */
+export async function lookupWalletUserId(wallet: string): Promise<string | null> {
+  const admin = getSupabaseAdmin();
+  if (!admin) return null;
+  try {
+    const existing = await admin.from('vendx_accounts').select('user_id').eq('wallet', wallet).maybeSingle();
+    return (existing.data as { user_id?: string | null } | null)?.user_id ?? null;
+  } catch (e) {
+    console.warn(`[web] wallet bridge unreachable: ${(e as Error).message}`);
+    return null;
+  }
+}
+
+/** Cookie jar the Supabase SSR client reads from and writes to. */
+export interface CookieAdapter {
+  getAll: GetAllCookies;
+  setAll: SetAllCookies;
+}
+
 /**
  * Ensure an auth.users row for `wallet`, record the mapping, and open a
- * Supabase session on `res`. Returns null when Supabase is not configured or
- * the bridge failed (logged, never thrown).
+ * Supabase session through `cookies`. Returns null when Supabase is not
+ * configured or the bridge failed (logged, never thrown).
  */
-export async function openWalletSession(wallet: string, req: NextRequest, res: NextResponse): Promise<WalletSession | null> {
+export async function openWalletSessionWith(wallet: string, cookies: CookieAdapter): Promise<WalletSession | null> {
   const admin = getSupabaseAdmin();
   if (!admin || !hasSupabaseEnv()) return null;
   try {
-    const existing = await admin.from('vendx_accounts').select('user_id').eq('wallet', wallet).maybeSingle();
-    const knownUserId = (existing.data as { user_id?: string | null } | null)?.user_id ?? null;
+    const knownUserId = await lookupWalletUserId(wallet);
 
     const link = await admin.auth.admin.generateLink({
       type: 'magiclink',
@@ -64,8 +88,13 @@ export async function openWalletSession(wallet: string, req: NextRequest, res: N
       if (upd.error) console.warn(`[web] wallet bridge: mapping write failed: ${upd.error.message}`);
     }
 
-    const session = createSupabaseRoute(req, res);
-    const verified = await session.auth.verifyOtp({ type: 'magiclink', token_hash: link.data.properties.hashed_token });
+    // `type: 'email'` accepts the hash whether GoTrue issued it as a signup
+    // link (the wallet's first login: the synthetic user is still unconfirmed)
+    // or a magiclink (every login after). `type: 'magiclink'` rejects the
+    // first case with "Email link is invalid or has expired", which left every
+    // new wallet connected in the pill but signed out everywhere else.
+    const session = createServerClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, { cookies });
+    const verified = await session.auth.verifyOtp({ type: 'email', token_hash: link.data.properties.hashed_token });
     if (verified.error) {
       console.warn(`[web] wallet bridge: verifyOtp failed: ${verified.error.message}`);
       return null;
@@ -75,4 +104,14 @@ export async function openWalletSession(wallet: string, req: NextRequest, res: N
     console.warn(`[web] wallet bridge unreachable: ${(e as Error).message}`);
     return null;
   }
+}
+
+/** Route Handler form: reads cookies from `req`, writes the session onto `res`. */
+export function openWalletSession(wallet: string, req: NextRequest, res: NextResponse): Promise<WalletSession | null> {
+  return openWalletSessionWith(wallet, {
+    getAll: () => req.cookies.getAll(),
+    setAll: (toSet) => {
+      for (const { name, value, options } of toSet) res.cookies.set(name, value, options);
+    },
+  });
 }

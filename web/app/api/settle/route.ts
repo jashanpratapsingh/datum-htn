@@ -1,7 +1,7 @@
 import { type NextRequest, NextResponse } from 'next/server';
 import { PRIMARY_RELAY } from '@/lib/relays';
 import { resolveRelay } from '@/lib/relays.server';
-import { getSessionUser } from '@/lib/supabase/server';
+import { getViewer } from '@/lib/auth/viewer';
 
 /**
  * Proxy to one relay's facilitator. Must match the relay that issued the 402.
@@ -13,10 +13,10 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json() as unknown;
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    const user = await getSessionUser();
-    if (user && process.env.VENDX_WEB_SECRET) {
+    const viewer = await getViewer();
+    if (viewer?.userId && process.env.VENDX_WEB_SECRET) {
       headers['x-vendx-web-secret'] = process.env.VENDX_WEB_SECRET;
-      headers['x-vendx-user-id'] = user.id;
+      headers['x-vendx-user-id'] = viewer.userId;
     }
     const res = await fetch(`${relay.url}/settle`, {
       method: 'POST',

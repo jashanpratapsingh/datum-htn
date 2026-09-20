@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation';
 import PageShell from '@/components/PageShell';
 import LoginForm from '@/components/auth/LoginForm';
 import WalletLogin from '@/components/auth/WalletLogin';
-import { getSessionUser } from '@/lib/supabase/server';
+import { getViewer } from '@/lib/auth/viewer';
 import { hasSupabaseEnv } from '@/lib/supabase/env';
 
 function safeNext(raw: string | undefined): string {
@@ -12,8 +12,8 @@ function safeNext(raw: string | undefined): string {
 export default async function LoginPage({ searchParams }: { searchParams: Promise<{ next?: string }> }) {
   const { next } = await searchParams;
   const target = safeNext(next);
-  const user = await getSessionUser();
-  if (user) redirect(target);
+  // Either login counts: an email session or a connected Phantom wallet.
+  if (await getViewer()) redirect(target);
 
   return (
     <PageShell

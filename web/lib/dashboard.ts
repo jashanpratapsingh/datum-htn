@@ -55,6 +55,11 @@ export interface Dashboard {
   unchartedReadings: number;
 }
 
+/** What a viewer with no Supabase session sees: nothing to read, honestly. */
+export function emptyDashboard(): Dashboard {
+  return { agents: [], readings: [], sales: [], unchartedReadings: 0 };
+}
+
 export async function loadDashboard(): Promise<Dashboard> {
   const supabase = await createSupabaseServer();
   const since = new Date(Date.now() - 24 * 3_600_000).toISOString();

@@ -8,9 +8,8 @@ import NewAgentForm from '@/components/account/NewAgentForm';
 import AgentCard from '@/components/account/AgentCard';
 import ActivityChart from '@/components/account/ActivityChart';
 import SpendChart from '@/components/account/SpendChart';
-import { getSessionUser } from '@/lib/supabase/server';
-import { displayNameOf } from '@/lib/auth/user';
-import { loadDashboard } from '@/lib/dashboard';
+import { getViewer } from '@/lib/auth/viewer';
+import { emptyDashboard, loadDashboard } from '@/lib/dashboard';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,10 +19,14 @@ export const dynamic = 'force-dynamic';
  * transaction. Everything is read as the signed-in user through RLS.
  */
 export default async function AccountPage() {
-  const user = await getSessionUser();
-  if (!user) redirect('/login?next=%2Faccount');
+  const viewer = await getViewer();
+  if (!viewer) redirect('/login?next=%2Faccount');
 
-  const { agents, readings, sales, unchartedReadings } = await loadDashboard();
+  // A Phantom login normally has a Supabase session too (proxy.ts opens it).
+  // Without one there is nothing RLS would let us read, so show the wallet
+  // and say so rather than an anonymous, empty dashboard.
+  const storeUnavailable = viewer.via === 'wallet';
+  const { agents, readings, sales, unchartedReadings } = storeUnavailable ? emptyDashboard() : await loadDashboard();
   const active = agents.filter((a) => !a.revokedAt);
   const agentName = new Map(agents.map((a) => [a.id, a.name]));
   const totalMicro = sales.reduce((s, r) => s + r.amountMicro, 0);
@@ -44,12 +47,12 @@ export default async function AccountPage() {
     <PageShell
       title="Account"
       subtitle="Your connected agents, the wallets they pay from, what they read and every transaction behind it."
-      stamp={displayNameOf(user)}
+      stamp={viewer.name}
     >
       <div className="flex flex-col gap-5">
-        <Panel label="Account" stamp="signed in">
+        <Panel label="Account" stamp={storeUnavailable ? 'signed in · account store unavailable' : 'signed in'}>
           <div className="grid grid-cols-2 sm:grid-cols-4">
-            <Readout label="identity" value={<span className="break-all text-base">{displayNameOf(user)}</span>} size="sm" />
+            <Readout label="identity" value={<span className="break-all text-base">{viewer.name}</span>} size="sm" />
             <div className="panel-divide-x">
               <Readout label="agents" value={active.length} unit="active" />
             </div>

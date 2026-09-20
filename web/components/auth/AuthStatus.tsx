@@ -4,16 +4,22 @@ import { useEffect, useState } from 'react';
 import type { User } from '@supabase/supabase-js';
 import { createSupabaseBrowser } from '@/lib/supabase/browser';
 import { hasSupabaseEnv } from '@/lib/supabase/env';
-import { displayNameOf } from '@/lib/auth/user';
+import { displayNameOf, walletOfUser } from '@/lib/auth/user';
 import { signOut } from '@/app/auth/actions';
+import { usePhantom } from '@/components/wallet/WalletProvider';
 
 /**
  * Who is signed in, in the nav. Self-hydrating so NavBar can stay a plain
  * client component mounted from every page; renders nothing until the
  * session is known, so it never flashes the wrong state.
+ *
+ * A connected Phantom wallet IS a login (its pill sits right next to this),
+ * so while the wallet is connected — or still deciding — there is no
+ * "Sign in" to offer, and no second name to print for the same wallet.
  */
 export default function AuthStatus({ compact = false }: { compact?: boolean }) {
   const [user, setUser] = useState<User | null | undefined>(undefined);
+  const wallet = usePhantom();
 
   useEffect(() => {
     if (!hasSupabaseEnv()) {
@@ -27,6 +33,12 @@ export default function AuthStatus({ compact = false }: { compact?: boolean }) {
   }, []);
 
   if (user === undefined) return null;
+
+  const walletPending = wallet.status === 'idle' || wallet.status === 'connecting';
+  const walletConnected = wallet.status === 'connected' && Boolean(wallet.wallet);
+  // Without Supabase the link below is "Get in touch", not a login: keep it.
+  if (!user && hasSupabaseEnv() && (walletPending || walletConnected)) return null;
+  if (user && walletConnected && walletOfUser(user) === wallet.wallet) return null;
 
   const linkClass = compact
     ? 'text-[20px] text-ink/70 hover:text-ink transition-colors'

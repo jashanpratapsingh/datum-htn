@@ -9,6 +9,7 @@ import { SourceBadge } from '@/components/SourceBadge';
 import { Play, CheckCircle, XCircle, AlertCircle } from 'lucide-react';
 import type { PaymentRequiredBody } from '@vendx/protocol';
 import { RELAYS, MULTI_RELAY, type RelayInfo } from '@/lib/relays';
+import { usePhantom } from '@/components/wallet/WalletProvider';
 
 function microToUsd(micro: string): string {
   return (Number(micro) / 1_000_000).toFixed(6);
@@ -127,9 +128,19 @@ export interface Viewer {
   name: string;
 }
 
+/**
+ * `viewer` is whoever the server saw signed in — by email or by Phantom.
+ * Until there is one, the console offers both doors: connect Phantom right
+ * here (the provider refreshes the page's server components once the cookie
+ * is set) or go to /login for email.
+ */
 export default function AgentConsole({ viewer, authConfigured }: { viewer: Viewer | null; authConfigured: boolean }) {
   const [state, setState] = useState<RunState>(initialState());
   const [running, setRunning] = useState(false);
+  const wallet = usePhantom();
+  const canConnectWallet = wallet.status === 'disconnected' || wallet.status === 'connecting';
+  // Cookie set, server not yet re-rendered: a beat of "signing in" instead of a stale "sign in".
+  const walletSigningIn = !viewer && (wallet.status === 'connected' || wallet.status === 'connecting');
   // The 402 and the settlement must go to the same relay: nonces live in
   // that relay's store only. The picker chooses the vendor for the whole run.
   const [relay, setRelay] = useState<RelayInfo>(RELAYS[0]);
@@ -216,7 +227,7 @@ export default function AgentConsole({ viewer, authConfigured }: { viewer: Viewe
         <PanelHeader
           title="Agent console"
           subtitle="A live run of the nine-step handshake, paid with real devnet USDC from the site's shared wallet. Each step lights when a real call returns — not on a timer."
-          stamp={running ? 'running' : hasStarted ? `${doneCount}/${STEPS.length}` : viewer ? 'ready' : 'sign in to run'}
+          stamp={running ? 'running' : hasStarted ? `${doneCount}/${STEPS.length}` : viewer ? 'ready' : walletSigningIn ? 'signing in' : 'sign in to run'}
         />
 
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_380px] gap-10">
@@ -255,6 +266,29 @@ export default function AgentConsole({ viewer, authConfigured }: { viewer: Viewe
                   <Play size={13} aria-hidden="true" />
                   {running ? 'Running…' : 'Run handshake'}
                 </button>
+              ) : canConnectWallet ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => void wallet.connect()}
+                    disabled={wallet.status === 'connecting'}
+                    aria-busy={wallet.status === 'connecting'}
+                    className="readout inline-flex items-center gap-2.5 rounded-full border border-ink bg-ink px-7 py-3 text-sm text-canvas transition-colors duration-150 hover:bg-transparent hover:text-ink disabled:cursor-wait disabled:opacity-60"
+                    data-agent="connect-wallet"
+                  >
+                    {wallet.status === 'connecting' ? 'Signing in with Phantom…' : 'Connect Phantom to run'}
+                  </button>
+                  {authConfigured && <Pill href="/login?next=%2Fagent">or sign in with email</Pill>}
+                  {wallet.error && (
+                    <span role="status" className="plate text-alarm">
+                      {wallet.error}
+                    </span>
+                  )}
+                </>
+              ) : walletSigningIn ? (
+                <span className="readout text-sm text-ink-muted" role="status">
+                  Signing in with your wallet…
+                </span>
               ) : (
                 <Pill href={authConfigured ? '/login?next=%2Fagent' : '/protocol'}>{authConfigured ? 'Sign in to run' : 'Accounts not configured — read the protocol'}</Pill>
               )}
@@ -391,10 +425,10 @@ export default function AgentConsole({ viewer, authConfigured }: { viewer: Viewe
                     </>
                   ) : (
                     <>
-                      <p className="readout mb-1 text-sm text-ink-muted">Sign in to buy a reading from this page.</p>
+                      <p className="readout mb-1 text-sm text-ink-muted">Connect Phantom or sign in with email to buy a reading from this page.</p>
                       <p className="text-xs text-ink-muted/70">
-                        The site pays from a shared devnet wallet and records the purchase to your account. To buy from your own
-                        agent, register one under Account and use the MCP server.
+                        Either login counts. The site pays from a shared devnet wallet and records the purchase to your account. To buy
+                        from your own agent, register one under Account and use the MCP server.
                       </p>
                     </>
                   )}
