@@ -7,7 +7,7 @@
  *   no-phantom    Get Phantom               (link to the extension)
  *   disconnected  Connect Phantom
  *   connecting    Signing…                  (disabled while the popup is open)
- *   connected     7xKp…9fQ2 · ◎ 1.204 · 12.50 USDC   (opens the menu)
+ *   connected     7xKp…9fQ2 · ◎ 1.204 · 12.50 USDC   (opens the menu; 9.9998 after a 100 µUSDC read)
  *
  * `variant="menu"` is the mobile overlay: same pill, menu rendered inline
  * below it rather than floating.
@@ -17,6 +17,7 @@ import { useEffect, useId, useRef, useState } from 'react';
 import { pillBase } from '@/components/Pill';
 import { PHANTOM_INSTALL_URL } from '@/lib/wallet/phantom';
 import { shortAddress } from '@/lib/wallet/siws';
+import { formatUsdcMicro } from '@/lib/usdc';
 import { usePhantom } from './WalletProvider';
 import { WalletMenu } from './WalletMenu';
 
@@ -27,11 +28,6 @@ function fmtSol(lamports: number): string {
   return sol >= 100 ? sol.toFixed(1) : sol >= 1 ? sol.toFixed(3) : sol.toFixed(4);
 }
 
-function fmtUsdc(micro: bigint): string {
-  const whole = micro / 1_000_000n;
-  const frac = (micro % 1_000_000n).toString().padStart(6, '0').slice(0, 2);
-  return `${whole.toLocaleString('en-US')}.${frac}`;
-}
 
 const filled = `${pillBase} bg-pill text-ink hover:bg-ink hover:text-pill`;
 
@@ -126,7 +122,7 @@ export function WalletPill({ variant = 'popover' }: { variant?: 'popover' | 'men
               ◎ {fmtSol(w.balances.lamports)}
             </span>
             <span className="readout hidden sm:inline" data-wallet="usdc">
-              {fmtUsdc(w.balances.usdcMicro)} USDC
+              {formatUsdcMicro(w.balances.usdcMicro)} USDC
             </span>
           </>
         )}

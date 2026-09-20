@@ -10,6 +10,7 @@ import { useEffect, useRef } from 'react';
 import { CopyPill } from '@/components/Pill';
 import { compositeId, getRelay } from '@/lib/relays';
 import { usePhantom } from './WalletProvider';
+import { formatUsdcMicro } from '@/lib/usdc';
 
 const LAMPORTS_PER_SOL = 1_000_000_000;
 
@@ -17,11 +18,6 @@ function fmtSol(lamports: number): string {
   return (lamports / LAMPORTS_PER_SOL).toFixed(4);
 }
 
-function fmtUsdc(micro: bigint): string {
-  const whole = micro / 1_000_000n;
-  const frac = (micro % 1_000_000n).toString().padStart(6, '0');
-  return `${whole.toLocaleString('en-US')}.${frac}`;
-}
 
 export function WalletMenu({ id, floating, onClose }: { id: string; floating: boolean; onClose: () => void }) {
   const w = usePhantom();
@@ -64,7 +60,7 @@ export function WalletMenu({ id, floating, onClose }: { id: string; floating: bo
         <div className="panel-divide-x px-4 py-3">
           <div className="plate">USDC</div>
           <div className="readout text-[15px] text-ink" data-wallet="menu-usdc">
-            {w.balances ? fmtUsdc(w.balances.usdcMicro) : '—'}
+            {w.balances ? formatUsdcMicro(w.balances.usdcMicro, 6, 6) : '—'}
           </div>
         </div>
       </div>

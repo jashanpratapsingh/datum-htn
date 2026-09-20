@@ -204,6 +204,8 @@ export default function AgentPage() {
           });
           txSig = paid.signature;
           setStep(5, 'done', `confirmed · ${paid.explorer}`);
+          // The pill polls every 30 s; the payer just watched money move, so show it now.
+          void wallet.refreshBalances();
         } catch (e) {
           const msg = isUserRejection(e) ? 'Rejected in Phantom' : solana.describePaymentError(e);
           setStep(sent ? 5 : 4, 'error', msg);

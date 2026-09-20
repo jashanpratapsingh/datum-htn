@@ -6,6 +6,7 @@ import { cookies } from 'next/headers';
 import { fetchPolicy, MULTI_RELAY } from '@/lib/relay';
 import { SESSION_COOKIE, verifyToken, type SessionClaims } from '@/lib/server/session';
 import { shortAddress } from '@/lib/wallet/siws';
+import { formatUsdc, formatPercent } from '@/lib/usdc';
 
 const DAY_CAP_USD = 5.0;
 
@@ -20,9 +21,12 @@ function ArcGauge({ spentMicro, capMicro }: { spentMicro: string; capMicro: stri
 
   const r = 70, cx = 100, cy = 90;
   const bg = `M ${cx - r} ${cy} A ${r} ${r} 0 1 0 ${cx + r} ${cy}`;
-  const ex = cx + r * Math.cos(Math.PI - pct * Math.PI);
-  const ey = cy - r * Math.sin(pct * Math.PI);
-  const fg = pct > 0.001 ? `M ${cx - r} ${cy} A ${r} ${r} 0 0 0 ${ex} ${ey}` : '';
+  // A single 100 µUSDC read is 0.002% of the cap: invisible as an arc. Any
+  // spend at all draws at least a sliver so the gauge visibly reacts.
+  const drawPct = spent > 0 ? Math.max(pct, 0.006) : 0;
+  const dx = cx + r * Math.cos(Math.PI - drawPct * Math.PI);
+  const dy = cy - r * Math.sin(drawPct * Math.PI);
+  const fg = drawPct > 0 ? `M ${cx - r} ${cy} A ${r} ${r} 0 0 0 ${dx} ${dy}` : '';
 
   return (
     <div className="flex flex-col items-center gap-6 px-4 py-8">
@@ -33,16 +37,16 @@ function ArcGauge({ spentMicro, capMicro }: { spentMicro: string; capMicro: stri
         </svg>
         <div className="absolute inset-0 flex flex-col items-center justify-end pb-1">
           <div className="readout  leading-none" style={{ fontSize: '2.25rem', color: remaining < 0.5 ? '#b93a2e' : '#141414' }}>
-            {remaining.toFixed(2)}
+            {formatUsdc(remaining)}
           </div>
           <div className="plate mt-1.5">USDC left today</div>
         </div>
       </div>
 
       <div className="grid w-full grid-cols-3 border-t border-rule">
-        <Readout label="spent" value={spent.toFixed(4)} tone="amber" size="sm" />
-        <div className="panel-divide-x"><Readout label="daily cap" value={cap.toFixed(2)} size="sm" /></div>
-        <div className="panel-divide-x"><Readout label="used" value={`${(pct * 100).toFixed(1)}%`} tone={pct >= 0.85 ? 'alarm' : 'ink'} size="sm" /></div>
+        <Readout label="spent" value={formatUsdc(spent)} tone="amber" size="sm" />
+        <div className="panel-divide-x"><Readout label="daily cap" value={formatUsdc(cap)} size="sm" /></div>
+        <div className="panel-divide-x"><Readout label="used" value={formatPercent(pct)} tone={pct >= 0.85 ? 'alarm' : 'ink'} size="sm" /></div>
       </div>
       <p className="plate">resets at midnight UTC</p>
     </div>
