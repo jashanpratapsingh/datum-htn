@@ -71,8 +71,10 @@ export async function checkAuthorize(p: AuthorizeParams): Promise<AuthorizeCheck
   return { ok: true, client, redirectUri: p.redirect_uri, challenge: p.code_challenge!, state, scope: requested.join(' '), resource: p.resource ?? null };
 }
 
+/** Append query params to an absolute URL or a site-relative path (a relative input stays relative). */
 export function withParams(base: string, params: Record<string, string | null | undefined>): string {
-  const u = new URL(base);
+  const relative = base.startsWith('/');
+  const u = new URL(base, relative ? 'http://relative.invalid' : undefined);
   for (const [k, v] of Object.entries(params)) if (v !== null && v !== undefined) u.searchParams.set(k, v);
-  return u.toString();
+  return relative ? `${u.pathname}${u.search}` : u.toString();
 }
