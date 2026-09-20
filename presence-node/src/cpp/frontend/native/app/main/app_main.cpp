@@ -22,6 +22,7 @@
 #include "native_frontend.h"
 #include "recovery_button_service.h"
 #include "badge_display.h"
+#include "vendx_earnings.h"
 #include "frontend_firmware_version.h"
 #include "improv_serial_service.h"
 #include "ota_service_https.h"
@@ -74,6 +75,7 @@ bool register_espectre_log_sink() {
 presence_node::NativeFrontend *g_frontend = nullptr;
 presence_node::RecoveryButtonService *g_recovery_button = nullptr;
 presence_node::BadgeDisplayService g_badge_display;
+presence_node::VendxEarningsService g_vendx_earnings;
 presence_node::ImprovSerialService *g_improv_serial = nullptr;
 presence_node::MdnsDiscoveryService *g_mdns_discovery = nullptr;
 presence_node::MdnsBootstrapResponder *g_mdns_bootstrap_responder = nullptr;
@@ -406,6 +408,16 @@ extern "C" void app_main() {
   }
   if (!g_badge_display.setup()) {
     ESP_LOGW(TAG, "Badge display unavailable; sensing continues without it");
+  } else {
+#if CONFIG_VENDX_EARNINGS_ENABLED
+    presence_node::VendxEarningsService::Config earnings_config;
+    earnings_config.relay_url = CONFIG_VENDX_RELAY_URL;
+    earnings_config.device_id = CONFIG_VENDX_DEVICE_ID;
+    earnings_config.wait_sec = CONFIG_VENDX_EARNINGS_WAIT_SEC;
+    if (!g_vendx_earnings.start(&g_badge_display, earnings_config)) {
+      ESP_LOGW(TAG, "Earnings display unavailable; the screen keeps showing motion state only");
+    }
+#endif
   }
   g_wifi_provisioning.set_reconfigure_callbacks(
       []() {

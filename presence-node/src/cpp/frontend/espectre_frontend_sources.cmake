@@ -58,6 +58,7 @@ set(ESPECTRE_FRONTEND_NATIVE_SOURCES
     "${ESPECTRE_FRONTEND_ROOT}/native/espectre/native_direct_frontend.cpp"
     "${ESPECTRE_FRONTEND_ROOT}/native/espectre/recovery_button_service.cpp"
     "${ESPECTRE_FRONTEND_ROOT}/native/espectre/badge_display.cpp"
+    "${ESPECTRE_FRONTEND_ROOT}/native/espectre/vendx_earnings.cpp"
     "${ESPECTRE_FRONTEND_ROOT}/native/espectre/native_mqtt_frontend.cpp"
     "${ESPECTRE_FRONTEND_ROOT}/native/espectre/native_frontend.cpp"
 )
