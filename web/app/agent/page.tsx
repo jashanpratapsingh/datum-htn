@@ -7,6 +7,7 @@ import { Panel } from '@/components/Panel';
 import { SourceBadge } from '@/components/SourceBadge';
 import { Play, CheckCircle, XCircle, AlertCircle } from 'lucide-react';
 import type { PaymentRequiredBody } from '@vendx/protocol';
+import { RELAYS, MULTI_RELAY, type RelayInfo } from '@/lib/relays';
 
 function microToUsd(micro: string): string {
   return (Number(micro) / 1_000_000).toFixed(6);
@@ -111,6 +112,10 @@ function StepDot({ status, color }: { status: StepStatus; color: string }) {
 export default function AgentPage() {
   const [state, setState] = useState<RunState>(initialState());
   const [running, setRunning] = useState(false);
+  // The 402 and the settlement must go to the same relay: nonces live in
+  // that relay's process only. The picker chooses the vendor for the whole run.
+  const [relay, setRelay] = useState<RelayInfo>(RELAYS[0]);
+  const q = `?relay=${encodeURIComponent(relay.key)}`;
 
   const setStep = useCallback((i: number, status: StepStatus, detail?: string) => {
     setState((prev) => {
@@ -130,12 +135,12 @@ export default function AgentPage() {
 
     try {
       setStep(0, 'running');
-      const r1 = await fetch('/api/telemetry');
+      const r1 = await fetch(`/api/telemetry${q}`);
       const body1 = await r1.json() as PaymentRequiredBody | { error?: string };
 
       if (r1.status === 503) {
         setStep(0, 'error', 'relay offline');
-        setState((p) => ({ ...p, error: 'Relay is offline. Start relay-proxy first (port 3402).' }));
+        setState((p) => ({ ...p, error: `Relay ${relay.label} is offline (${relay.url}).` }));
         setRunning(false);
         return;
       }
@@ -145,7 +150,7 @@ export default function AgentPage() {
         setRunning(false);
         return;
       }
-      setStep(0, 'done', 'GET /api/telemetry sent');
+      setStep(0, 'done', MULTI_RELAY ? `GET /api/telemetry via ${relay.label}` : 'GET /api/telemetry sent');
 
       setStep(1, 'running');
       challenge = body1 as PaymentRequiredBody;
@@ -172,7 +177,7 @@ export default function AgentPage() {
       setStep(5, 'done', 'devnet simulator — no chain latency');
 
       setStep(6, 'running');
-      const settleRes = await fetch('/api/settle', {
+      const settleRes = await fetch(`/api/settle${q}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -194,7 +199,7 @@ export default function AgentPage() {
       setStep(6, 'done', `receipt: ${receipt.slice(0, 18)}…`);
 
       setStep(7, 'running');
-      const r2 = await fetch('/api/telemetry', {
+      const r2 = await fetch(`/api/telemetry${q}`, {
         headers: { 'x-payment-receipt': receipt },
       });
       const body2 = await r2.json() as Record<string, unknown>;
@@ -216,7 +221,7 @@ export default function AgentPage() {
     }
 
     setRunning(false);
-  }, [setStep]);
+  }, [setStep, relay, q]);
 
   const { statuses, details, challenge, telemetry, error } = state;
   const doneCount = statuses.filter((s) => s === 'done').length;
@@ -236,6 +241,29 @@ export default function AgentPage() {
 
           {/* Timeline */}
           <div className="flex flex-col gap-6">
+
+            {/* Relay picker: only when there is a choice to make */}
+            {MULTI_RELAY && (
+              <div className="flex flex-wrap items-center gap-2" role="radiogroup" aria-label="Relay">
+                <span className="plate mr-1">relay</span>
+                {RELAYS.map((r) => (
+                  <button
+                    key={r.key}
+                    type="button"
+                    role="radio"
+                    aria-checked={r.key === relay.key}
+                    disabled={running}
+                    onClick={() => setRelay(r)}
+                    title={r.url}
+                    className={`readout rounded-full border px-3 py-1 text-xs transition-colors disabled:cursor-not-allowed ${
+                      r.key === relay.key ? 'border-ink bg-ink text-canvas' : 'border-rule text-ink-muted hover:border-ink hover:text-ink'
+                    }`}
+                  >
+                    {r.label}
+                  </button>
+                ))}
+              </div>
+            )}
 
             {/* Run button + progress */}
             <div className="flex items-center gap-4">

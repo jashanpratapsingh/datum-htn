@@ -1,6 +1,6 @@
 import { Panel } from './Panel';
 import DeviceCarousel from './DeviceCarousel';
-import { fetchDevices } from '@/lib/relay';
+import { fetchDevices, MULTI_RELAY, RELAYS } from '@/lib/relay';
 
 /** Fleet on the landing page: one card per device, or an honest empty state. */
 export default async function VendorMap() {
@@ -31,7 +31,9 @@ export default async function VendorMap() {
     <section className="mt-16" aria-label="Fleet">
       <div className="flex items-center justify-between px-1">
         <span className="plate">Fleet</span>
-        <span className="plate">{devices.length} online</span>
+        <span className="plate">
+          {devices.length} online{MULTI_RELAY ? ` · ${RELAYS.length - result.failed.length}/${RELAYS.length} relays` : ''}
+        </span>
       </div>
       <DeviceCarousel devices={devices} />
     </section>

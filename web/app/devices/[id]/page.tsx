@@ -2,6 +2,7 @@ import PageShell from '@/components/PageShell';
 import { Panel, Readout } from '@/components/Panel';
 import { SourceBadge } from '@/components/SourceBadge';
 import { RelayOffline } from '@/components/RelayOffline';
+import { RelayTag } from '@/components/RelayTag';
 import { fetchDevice } from '@/lib/relay';
 
 const HEAP_TOTAL = 327_680;
@@ -137,13 +138,16 @@ function HeapGauge({ free, largest }: { free: number; largest: number }) {
 }
 
 export default async function DeviceDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = await params;
+  // The segment arrives still percent-encoded ("relay%3Aid"); decode before
+  // splitting off the relay key or the composite id never matches.
+  const { id: rawId } = await params;
+  const id = decodeURIComponent(rawId);
   const result = await fetchDevice(id);
 
   if (!result.ok) {
     return (
-      <PageShell title={decodeURIComponent(id)} subtitle="Device detail" stamp="no link">
-        <RelayOffline path={`/api/devices/${id}`} reason={result.reason} />
+      <PageShell title={id.replace(/^[^:]+:/, '')} subtitle="Device detail" stamp={result.reason === 'not_found' ? 'unknown device' : 'no link'}>
+        <RelayOffline path={`/api/devices/${encodeURIComponent(id)}`} reason={result.reason} />
       </PageShell>
     );
   }
@@ -157,7 +161,7 @@ export default async function DeviceDetailPage({ params }: { params: Promise<{ i
     <PageShell
       title={d.id}
       subtitle={lastSeen ? `Last seen ${lastSeen.toISOString()}` : 'Device detail'}
-      stamp={<span className="flex items-center gap-2">{d.chip}<SourceBadge source={d.source} /></span>}
+      stamp={<span className="flex items-center gap-2">{d.chip}<SourceBadge source={d.source} /><RelayTag relay={d.relay} /></span>}
     >
       <div className="flex flex-col gap-5">
         <Panel label="Earnings" live>

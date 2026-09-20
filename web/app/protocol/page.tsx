@@ -1,6 +1,6 @@
 import PageShell from '@/components/PageShell';
 import { Panel } from '@/components/Panel';
-import { fetchChallenge } from '@/lib/relay';
+import { fetchChallenge, MULTI_RELAY } from '@/lib/relay';
 import type { PaymentRequiredBody } from '@vendx/protocol';
 import { microUsdcToUsd } from '@vendx/protocol';
 
@@ -89,7 +89,7 @@ export default async function ProtocolPage() {
     <PageShell
       title="Protocol explorer"
       subtitle="Take a real 402 apart field by field, then follow the payment through to the receipt the device checks."
-      stamp={ch.ok ? 'live challenge' : 'no link'}
+      stamp={ch.ok ? (MULTI_RELAY ? `live challenge · ${ch.data.relay.label}` : 'live challenge') : 'no link'}
     >
       <div className="flex flex-col gap-14">
         <Step title="The device says what it costs" badge="Step 1">
@@ -98,7 +98,7 @@ export default async function ProtocolPage() {
             is minted per request and must be spent before <span className="readout text-ink">expiresAt</span>.
           </p>
           {ch.ok ? (
-            <ChallengeDecoded challenge={ch.data} />
+            <ChallengeDecoded challenge={ch.data.challenge} />
           ) : (
             <Panel label={ch.reason === 'offline' ? 'no relay link' : 'challenge unavailable'}>
               <p className="readout px-4 py-10 text-center text-sm text-ink-muted">

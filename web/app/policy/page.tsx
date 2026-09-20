@@ -1,7 +1,8 @@
 import PageShell from '@/components/PageShell';
 import { Panel, Readout } from '@/components/Panel';
 import { RelayOffline } from '@/components/RelayOffline';
-import { fetchPolicy } from '@/lib/relay';
+import { RelayDark } from '@/components/RelayTag';
+import { fetchPolicy, MULTI_RELAY } from '@/lib/relay';
 
 const DAY_CAP_USD = 5.0;
 
@@ -56,22 +57,34 @@ const RULES: [string, string][] = [
 
 export default async function PolicyPage() {
   const result = await fetchPolicy();
+  // One policy per relay: the budget is the buyer agent's on that relay's
+  // machine, so two relays mean two gauges, never one summed number.
+  const policies = result.ok ? result.data : [];
   // `denials` is undefined when the relay does not serve a log — distinct from an empty one.
-  const denials = result.ok ? result.data.denials : undefined;
+  const denials = policies[0]?.denials;
 
   return (
     <PageShell
       title="Policy engine"
       subtitle="The APEX spend budget. Every denial is logged. The guard is mechanical, not advisory."
-      stamp={result.ok ? result.data.date : 'no link'}
+      stamp={result.ok ? policies[0]?.date : 'no link'}
     >
       <div className="flex flex-col gap-5">
         {!result.ok ? (
           <RelayOffline path="/api/policy" reason={result.reason} />
         ) : (
-          <Panel label="Today's spend" live>
-            <ArcGauge spentMicro={result.data.spentMicroUsdc} capMicro={result.data.dailyCapMicroUsdc} />
-          </Panel>
+          <>
+            {policies.map((p) => (
+              <Panel key={p.relay.key} label={MULTI_RELAY ? `Today's spend · ${p.relay.label}` : "Today's spend"} live>
+                <ArcGauge spentMicro={p.spentMicroUsdc} capMicro={p.dailyCapMicroUsdc} />
+              </Panel>
+            ))}
+            {result.failed.map((f) => (
+              <Panel key={f.relay.key} label={`Today's spend · ${f.relay.label}`}>
+                <RelayDark relay={f.relay} message={f.message} />
+              </Panel>
+            ))}
+          </>
         )}
 
         <Panel label="Enforcement rules">

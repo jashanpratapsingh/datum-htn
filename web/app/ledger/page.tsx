@@ -1,7 +1,7 @@
 import PageShell from '@/components/PageShell';
 import { Panel, Readout } from '@/components/Panel';
 import { RelayOffline } from '@/components/RelayOffline';
-import { fetchLedger } from '@/lib/relay';
+import { fetchLedger, MULTI_RELAY } from '@/lib/relay';
 
 const solscan = (sig: string) => `https://solscan.io/tx/${sig}?cluster=devnet`;
 
@@ -56,13 +56,13 @@ export default async function LedgerPage() {
 
             <ol className="readout text-[13px]">
               {entries.map((e) => (
-                <li key={e.nonce} className="border-b border-dotted border-ink-muted/40 py-2.5">
+                <li key={`${e.relay.key}:${e.nonce}`} className="border-b border-dotted border-ink-muted/40 py-2.5">
                   <div className="flex justify-between gap-4">
                     <span className="truncate text-ink">{e.signature}</span>
                     <span className="shrink-0 tabular-nums text-ink">{(Number(e.amount) / 1e6).toFixed(6)}</span>
                   </div>
                   <div className="mt-0.5 flex justify-between gap-4 text-[11px] text-ink-muted">
-                    <span>{e.network} · nonce {e.nonce.slice(0, 12)}…</span>
+                    <span>{e.network} · nonce {e.nonce.slice(0, 12)}…{MULTI_RELAY ? ` · via ${e.relay.label}` : ''}</span>
                     <span className="flex items-center gap-3">
                       {new Date(e.issuedAt * 1000).toLocaleTimeString()}
                       <a

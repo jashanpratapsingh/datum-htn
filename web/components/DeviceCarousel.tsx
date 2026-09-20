@@ -2,6 +2,7 @@
 
 import { Carousel, TestimonialCard } from '@/components/ui/retro-testimonial';
 import { SourceBadge } from './SourceBadge';
+import { deviceHref, MULTI_RELAY } from '@/lib/relay';
 import type { DeviceEntry } from '@/lib/relay';
 
 /*
@@ -34,7 +35,8 @@ function sentence(d: DeviceEntry): string {
 
 function designation(d: DeviceEntry): string {
   const what = d.source === 'badge' ? 'ESP32-C3 badge' : 'simulated device';
-  return d.chip ? `${what}, ${d.chip}` : what;
+  const base = d.chip ? `${what}, ${d.chip}` : what;
+  return MULTI_RELAY ? `${base} · via ${d.relay.label}` : base;
 }
 
 function Detail({ d }: { d: DeviceEntry }) {
@@ -53,7 +55,7 @@ function Detail({ d }: { d: DeviceEntry }) {
       <div className="contents">
         <dt className="text-ink/50">Detail</dt>
         <dd>
-          <a href={`/devices/${encodeURIComponent(d.id)}`} className="underline underline-offset-4">
+          <a href={deviceHref(d)} className="underline underline-offset-4">
             open the device page
           </a>
         </dd>
@@ -65,7 +67,7 @@ function Detail({ d }: { d: DeviceEntry }) {
 export default function DeviceCarousel({ devices }: { devices: DeviceEntry[] }) {
   const cards = devices.map((d, i) => (
     <TestimonialCard
-      key={d.id}
+      key={`${d.relay.key}:${d.id}`}
       index={i}
       testimonial={{
         name: d.id,

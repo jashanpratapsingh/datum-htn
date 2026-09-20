@@ -2,7 +2,8 @@ import PageShell from '@/components/PageShell';
 import { Panel } from '@/components/Panel';
 import { SourceBadge } from '@/components/SourceBadge';
 import { RelayOffline } from '@/components/RelayOffline';
-import { fetchDevices } from '@/lib/relay';
+import { RelayTag, RelayDark } from '@/components/RelayTag';
+import { fetchDevices, deviceHref, RELAYS, MULTI_RELAY } from '@/lib/relay';
 import type { DeviceEntry } from '@/lib/relay';
 
 const HEAP_TOTAL = 327_680;
@@ -34,13 +35,14 @@ function DeviceRow({ device }: { device: DeviceEntry }) {
 
   return (
     <a
-      href={`/devices/${encodeURIComponent(device.id)}`}
+      href={deviceHref(device)}
       className="group block panel-divide px-4 py-4 transition-colors hover:bg-canvas"
     >
       <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
         <div className="min-w-0 flex-1">
           <div className="mb-1.5 flex flex-wrap items-center gap-2">
             <SourceBadge source={device.source} />
+            <RelayTag relay={device.relay} />
             {device.chip && <span className="plate">{device.chip}</span>}
           </div>
           <p className="readout truncate text-sm text-ink group-hover:">{device.id}</p>
@@ -80,35 +82,63 @@ function DeviceRow({ device }: { device: DeviceEntry }) {
   );
 }
 
+const Legend = () => (
+  <span className="flex items-center gap-3">
+    <SourceBadge source="badge" />
+    <span className="normal-case tracking-normal">= real hardware</span>
+    <SourceBadge source="simulator" />
+    <span className="normal-case tracking-normal">= software mock</span>
+  </span>
+);
+
 export default async function DevicesPage() {
   const result = await fetchDevices();
   const count = result.ok ? result.data.length : 0;
+  const darkCount = result.ok ? result.failed.length : RELAYS.length;
+
+  // One panel per relay: each vendor's fleet stands on its own, and a relay
+  // that is down is reported in its own panel instead of blanking the page.
+  const groups = result.ok
+    ? RELAYS.map((relay) => ({
+        relay,
+        devices: result.data.filter((d) => d.relay.key === relay.key),
+        failure: result.failed.find((f) => f.relay.key === relay.key),
+      }))
+    : [];
 
   return (
     <PageShell
       title="Device fleet"
-      subtitle="Every vending node. The provenance stamp is authoritative: badge means a real ESP32-C3 is attached."
-      stamp={result.ok ? `${count} online` : 'no link'}
+      subtitle={
+        MULTI_RELAY
+          ? `Every vending node across ${RELAYS.length} relays. The provenance stamp is authoritative: badge means a real ESP32-C3 is attached.`
+          : 'Every vending node. The provenance stamp is authoritative: badge means a real ESP32-C3 is attached.'
+      }
+      stamp={result.ok ? `${count} online${darkCount ? ` · ${darkCount} relay dark` : ''}` : 'no link'}
     >
       {!result.ok ? (
         <RelayOffline path="/api/devices" reason={result.reason} />
-      ) : result.data.length === 0 ? (
-        <Panel label="Fleet">
-          <p className="readout px-4 py-12 text-center text-sm text-ink-muted">
-            No devices registered. Start relay-proxy to register one.
-          </p>
-        </Panel>
       ) : (
-        <Panel label="Fleet" live stamp={
-          <span className="flex items-center gap-3">
-            <SourceBadge source="badge" />
-            <span className="normal-case tracking-normal">= real hardware</span>
-            <SourceBadge source="simulator" />
-            <span className="normal-case tracking-normal">= software mock</span>
-          </span>
-        }>
-          {result.data.map((d) => <DeviceRow key={d.id} device={d} />)}
-        </Panel>
+        <div className="flex flex-col gap-5">
+          {groups.map(({ relay, devices, failure }, i) => (
+            <Panel
+              key={relay.key}
+              label={MULTI_RELAY ? `Fleet · ${relay.label}` : 'Fleet'}
+              live={!failure}
+              stamp={i === 0 ? <Legend /> : MULTI_RELAY ? <span className="normal-case tracking-normal">{new URL(relay.url).hostname}</span> : undefined}
+            >
+              {failure ? (
+                <RelayDark relay={relay} message={failure.message} />
+              ) : devices.length === 0 ? (
+                <p className="readout px-4 py-12 text-center text-sm text-ink-muted">
+                  No devices registered. Start relay-proxy to register one.
+                </p>
+              ) : (
+                devices.map((d) => <DeviceRow key={`${relay.key}:${d.id}`} device={d} />)
+              )}
+            </Panel>
+          ))}
+        </div>
       )}
     </PageShell>
   );
