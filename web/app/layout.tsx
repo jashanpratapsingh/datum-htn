@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import { Inter } from 'next/font/google';
 import './globals.css';
+import { WalletProvider } from '@/components/wallet/WalletProvider';
 
 /* One grotesque, regular weight, for every word on the site. */
 const inter = Inter({
@@ -25,7 +26,9 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body className={inter.variable}>{children}</body>
+      <body className={inter.variable}>
+        <WalletProvider>{children}</WalletProvider>
+      </body>
     </html>
   );
 }
