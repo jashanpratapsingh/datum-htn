@@ -155,18 +155,34 @@ export default async function DeviceDetailPage({ params }: { params: Promise<{ i
   const d = result.data;
   const lastSeen = d.lastSeen ? new Date(d.lastSeen * 1000) : null;
   const earned = Number(d.earningsMicroUsdc ?? '0') / 1e6;
-  const hasTelemetry = d.freeHeap != null || d.resetReasons;
+  const hasTelemetry = d.freeHeap != null || d.resetReasons || d.motion || d.sensing;
 
   return (
     <PageShell
       title={d.id}
       subtitle={lastSeen ? `Last seen ${lastSeen.toISOString()}` : 'Device detail'}
-      stamp={<span className="flex items-center gap-2">{d.chip}<SourceBadge source={d.source} /><RelayTag relay={d.relay} /></span>}
+      stamp={<span className="flex items-center gap-2">{d.chip}{d.location && <span className="plate">{d.location}</span>}<SourceBadge source={d.source} /><RelayTag relay={d.relay} /></span>}
     >
       <div className="flex flex-col gap-5">
         <Panel label="Earnings" live>
           <Readout label="lifetime" value={earned.toFixed(4)} unit="USDC" tone="amber" size="lg" />
         </Panel>
+
+        {(d.motion || d.sensing) && (
+          <Panel label="Presence" live stamp={d.transport ? `${d.transport}${d.firmware ? ` · fw ${d.firmware}` : ''}` : undefined}>
+            <div className="grid grid-cols-2 md:grid-cols-4">
+              <Readout label="motion" value={d.motion?.state ?? '—'} tone={d.motion?.state === 'motion' ? 'amber' : undefined} size="lg" />
+              <div className="panel-divide-x"><Readout label="score" value={d.motion ? d.motion.score.toFixed(3) : '—'} size="sm" /></div>
+              <div className="panel-divide md:panel-divide-x md:border-t-0"><Readout label="threshold" value={d.sensing ? d.sensing.threshold.toFixed(2) : '—'} size="sm" /></div>
+              <div className="panel-divide panel-divide-x"><Readout label="detector" value={d.sensing ? (d.sensing.calibrating ? 'calibrating' : d.sensing.ready ? 'ready' : 'warming up') : '—'} size="sm" /></div>
+            </div>
+            <div className="grid grid-cols-2 border-t border-rule md:grid-cols-3">
+              <Readout label="wifi rssi" value={d.rssiDbm != null ? `${d.rssiDbm} dBm` : '—'} size="sm" />
+              <div className="panel-divide-x"><Readout label="uptime" value={d.uptimeSeconds != null ? `${Math.floor(d.uptimeSeconds / 60)} min` : '—'} size="sm" /></div>
+              <div className="panel-divide md:panel-divide-x md:border-t-0"><Readout label="last event" value={d.motion ? new Date(d.motion.at * 1000).toLocaleTimeString() : '—'} size="sm" /></div>
+            </div>
+          </Panel>
+        )}
 
         {d.freeHeap != null && d.largestBlock != null && (
           <Panel label="Heap memory" live>
@@ -174,6 +190,7 @@ export default async function DeviceDetailPage({ params }: { params: Promise<{ i
           </Panel>
         )}
 
+        {d.source !== 'esp32c3' && (
         <Panel label="Readouts">
           <div className="grid grid-cols-2 md:grid-cols-3">
             <Readout label="boots" value={d.bootCount ?? '—'} size="sm" />
@@ -184,6 +201,7 @@ export default async function DeviceDetailPage({ params }: { params: Promise<{ i
             <div className="panel-divide panel-divide-x"><Readout label="device hash" value={d.deviceHash ? `${d.deviceHash.slice(0, 12)}…` : '—'} size="sm" /></div>
           </div>
         </Panel>
+        )}
 
         {d.resetReasons && Object.keys(d.resetReasons).length > 0 && (
           <Panel label="Reset reasons" stamp={`${Object.values(d.resetReasons).reduce((a, b) => a + b, 0)} total`}>
