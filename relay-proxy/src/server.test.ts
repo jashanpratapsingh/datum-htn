@@ -42,7 +42,7 @@ store.seedAgent({
   revokedAt: new Date().toISOString(),
   keyHash: hashAgentKey(REVOKED_KEY),
 });
-const server = createRelayServer(0, { store });
+const server = createRelayServer(0, { store, espectreDiscovery: false });
 await new Promise<void>(resolve => server.listen(0, resolve));
 const { port } = server.address() as AddressInfo;
 const BASE = `http://localhost:${port}`;

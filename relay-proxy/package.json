@@ -17,6 +17,7 @@
     "@solana/web3.js": "^1.99.0",
     "@supabase/supabase-js": "^2.116.0",
     "@vendx/protocol": "*",
+    "bonjour-service": "^1.4.4",
     "tweetnacl": "^1.0.3"
   },
   "devDependencies": {

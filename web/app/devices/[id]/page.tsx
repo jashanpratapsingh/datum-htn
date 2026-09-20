@@ -154,6 +154,41 @@ export default async function DeviceDetailPage({ params }: { params: Promise<{ i
 
   const d = result.data;
   const lastSeen = d.lastSeen ? new Date(d.lastSeen * 1000) : null;
+
+  if (d.kind === 'sensor') {
+    const stateTone = d.motionState === 'motion' ? '#3a9c4f' : '#b93a2e';
+    return (
+      <PageShell
+        title={d.name ?? d.id}
+        subtitle={lastSeen ? `Last seen ${lastSeen.toISOString()}` : 'Device detail'}
+        stamp={<span className="flex items-center gap-2">{d.chip}<span className="plate">espectre</span><RelayTag relay={d.relay} /></span>}
+      >
+        <div className="flex flex-col gap-5">
+          <Panel label="Motion" live={d.online}>
+            <div className="px-4 py-6">
+              <div className="readout text-4xl leading-none" style={{ color: d.online ? stateTone : undefined }}>
+                {d.online ? (d.motionState ?? 'unknown') : 'offline'}
+              </div>
+              {!d.online && (
+                <p className="readout mt-2 text-[11px] text-ink-muted">
+                  Not seen on the LAN recently — dropped from mDNS or unreachable.
+                </p>
+              )}
+            </div>
+          </Panel>
+
+          <Panel label="Readouts">
+            <div className="grid grid-cols-2 md:grid-cols-3">
+              <Readout label="threshold" value={d.threshold != null ? d.threshold.toFixed(2) : '—'} size="sm" />
+              <div className="panel-divide-x"><Readout label="calibrated" value={d.ready == null ? '—' : d.ready ? 'yes' : 'no'} size="sm" /></div>
+              <div className="panel-divide md:panel-divide-x md:border-t-0"><Readout label="firmware" value={d.firmware ?? '—'} size="sm" /></div>
+            </div>
+          </Panel>
+        </div>
+      </PageShell>
+    );
+  }
+
   const earned = Number(d.earningsMicroUsdc ?? '0') / 1e6;
   const hasTelemetry = d.freeHeap != null || d.resetReasons || d.motion || d.sensing;
 

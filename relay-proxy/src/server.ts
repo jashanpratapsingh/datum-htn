@@ -14,6 +14,7 @@ import { deviceState, getHeartbeatState, startHeartbeat } from './heartbeat.js';
 import { buildLedgerStatus } from './ledger.js';
 import { registerNode, listNodes, getNode, probeNode } from './node-registry.js';
 import { computeEarnings, notifySale, waitForEarningsChange, waitMsFromQuery } from './earnings.js';
+import { getEspectreSensor, getEspectreSensors, startEspectreDiscovery } from './espectre-discovery.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = join(__dirname, '../../data');
@@ -100,6 +101,8 @@ export interface RelayServerOptions {
   store?: Store;
   /** Advertise this relay in the directory (default true). */
   heartbeat?: boolean;
+  /** Browse mDNS for ESPectre sensors and merge them into /api/devices (default true). */
+  espectreDiscovery?: boolean;
 }
 
 export function createRelayServer(port = DEFAULT_PORT, opts: RelayServerOptions = {}) {
@@ -122,6 +125,7 @@ export function createRelayServer(port = DEFAULT_PORT, opts: RelayServerOptions 
 
   server.on('listening', () => {
     if (opts.heartbeat !== false) startHeartbeat(store, { port });
+    if (opts.espectreDiscovery !== false) startEspectreDiscovery();
   });
 
   async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
@@ -328,6 +332,10 @@ export function createRelayServer(port = DEFAULT_PORT, opts: RelayServerOptions 
             ...(telemetry.transport ? { transport: telemetry.transport } : {}),
           },
           ...nodes,
+          // ESPectre motion sensors found on the LAN via mDNS — see
+          // espectre-discovery.ts for why these don't share the vendor shape
+          // above (no wallet, no price: they aren't selling anything).
+          ...getEspectreSensors(),
         ],
       });
     }
@@ -392,11 +400,15 @@ export function createRelayServer(port = DEFAULT_PORT, opts: RelayServerOptions 
         });
       }
       const telemetry = await readBadge();
-      if (telemetry.deviceId !== id) {
-        return json(res, 404, { error: 'device_not_found', id });
+      if (telemetry.deviceId === id) {
+        const deviceSales = await store.listSales({ source: telemetry.source, limit: 50 });
+        return json(res, 200, { device: telemetry, recentSales: deviceSales });
       }
-      const deviceSales = await store.listSales({ source: telemetry.source, limit: 50 });
-      return json(res, 200, { device: telemetry, recentSales: deviceSales });
+      const sensor = getEspectreSensor(id);
+      if (sensor) {
+        return json(res, 200, { device: sensor });
+      }
+      return json(res, 404, { error: 'device_not_found', id });
     }
 
     // GET /api/sales — this relay's sales, newest first (receipts never included)

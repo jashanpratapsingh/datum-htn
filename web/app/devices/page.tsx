@@ -4,7 +4,7 @@ import { SourceBadge } from '@/components/SourceBadge';
 import { RelayOffline } from '@/components/RelayOffline';
 import { RelayTag, RelayDark } from '@/components/RelayTag';
 import { fetchDevices, deviceHref, RELAYS, MULTI_RELAY } from '@/lib/relay';
-import type { DeviceEntry } from '@/lib/relay';
+import type { DeviceEntry, SensorEntry } from '@/lib/relay';
 
 const HEAP_TOTAL = 327_680;
 
@@ -92,6 +92,71 @@ function DeviceRow({ device }: { device: DeviceEntry }) {
   );
 }
 
+/** Mirrors the badge's own screen: green for motion, red for none. */
+function MotionBadge({ state, online }: { state?: 'idle' | 'motion'; online: boolean }) {
+  if (!online) {
+    return <span className="plate inline-flex items-center gap-1.5 border border-rule px-1.5 py-0.5 text-ink-muted">offline</span>;
+  }
+  const isMotion = state === 'motion';
+  return (
+    <span
+      className={`plate inline-flex items-center gap-1.5 rounded-[2px] border px-1.5 py-0.5 ${
+        isMotion ? 'border-ink/40 text-ink' : 'border-rule text-ink-muted'
+      }`}
+    >
+      <span
+        aria-hidden="true"
+        className="h-1.5 w-1.5 rounded-full"
+        style={{ backgroundColor: state == null ? undefined : isMotion ? '#3a9c4f' : '#b93a2e' }}
+      />
+      {state ?? 'unknown'}
+    </span>
+  );
+}
+
+function SensorRow({ sensor }: { sensor: SensorEntry }) {
+  const lastSeen = sensor.lastSeen ? new Date(sensor.lastSeen * 1000) : null;
+  return (
+    <a
+      href={deviceHref(sensor)}
+      className="group block panel-divide px-4 py-4 transition-colors hover:bg-canvas"
+    >
+      <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
+        <div className="min-w-0 flex-1">
+          <div className="mb-1.5 flex flex-wrap items-center gap-2">
+            <span className="plate">espectre</span>
+            <RelayTag relay={sensor.relay} />
+            {sensor.chip && <span className="plate">{sensor.chip}</span>}
+          </div>
+          <p className="readout truncate text-sm text-ink group-hover:">{sensor.name ?? sensor.id}</p>
+        </div>
+        <MotionBadge state={sensor.motionState} online={sensor.online} />
+      </div>
+
+      <dl className="mt-4 grid grid-cols-2 gap-x-6 gap-y-3 border-t border-rule pt-3 md:grid-cols-4">
+        <div>
+          <dt className="plate mb-1">threshold</dt>
+          <dd className="readout text-sm text-ink/80">{sensor.threshold != null ? sensor.threshold.toFixed(2) : '—'}</dd>
+        </div>
+        <div>
+          <dt className="plate mb-1">firmware</dt>
+          <dd className="readout text-sm text-ink/80">{sensor.firmware ?? '—'}</dd>
+        </div>
+        <div>
+          <dt className="plate mb-1">calibrated</dt>
+          <dd className="readout text-sm text-ink/80">{sensor.ready == null ? '—' : sensor.ready ? 'yes' : 'no'}</dd>
+        </div>
+        <div>
+          <dt className="plate mb-1">last seen</dt>
+          <dd className="readout text-sm text-ink/80">
+            {lastSeen ? lastSeen.toLocaleTimeString() : '—'}
+          </dd>
+        </div>
+      </dl>
+    </a>
+  );
+}
+
 const Legend = () => (
   <span className="flex items-center gap-3">
     <SourceBadge source="badge" />
@@ -123,8 +188,8 @@ export default async function DevicesPage() {
       title="Device fleet"
       subtitle={
         MULTI_RELAY
-          ? `Every vending node across ${RELAYS.length} relays. The provenance stamp is authoritative: badge means a real ESP32-C3 is attached.`
-          : 'Every vending node. The provenance stamp is authoritative: badge means a real ESP32-C3 is attached.'
+          ? `Every vending node and motion sensor across ${RELAYS.length} relays. The provenance stamp is authoritative: badge means a real ESP32-C3 is attached.`
+          : 'Every vending node and motion sensor. The provenance stamp is authoritative: badge means a real ESP32-C3 is attached.'
       }
       stamp={result.ok ? `${count} online${darkCount ? ` · ${darkCount} relay dark` : ''}` : 'no link'}
     >
@@ -146,7 +211,13 @@ export default async function DevicesPage() {
                   No devices registered. Start relay-proxy to register one.
                 </p>
               ) : (
-                devices.map((d) => <DeviceRow key={`${relay.key}:${d.id}`} device={d} />)
+                devices.map((d) =>
+                  d.kind === 'sensor' ? (
+                    <SensorRow key={`${relay.key}:${d.id}`} sensor={d} />
+                  ) : (
+                    <DeviceRow key={`${relay.key}:${d.id}`} device={d} />
+                  ),
+                )
               )}
             </Panel>
           ))}

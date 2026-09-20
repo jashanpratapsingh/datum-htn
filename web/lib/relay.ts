@@ -86,6 +86,7 @@ export interface MotionReading {
 export type Source = 'badge' | 'simulator' | 'esp32c3';
 
 export interface DeviceEntry {
+  kind: 'vendor';
   id: string;
   /** The relay (vendor) this device is sold through. */
   relay: RelayInfo;
@@ -120,8 +121,31 @@ export interface DeviceEntry {
   priceUsd?: number;
 }
 
+/**
+ * A WiFi-CSI motion sensor discovered on the LAN via mDNS (see
+ * relay-proxy/src/espectre-discovery.ts). It isn't an x402 vendor — no
+ * wallet, no price, nothing sold — so it carries none of DeviceEntry's
+ * earnings/sales fields rather than fake them.
+ */
+export interface SensorEntry {
+  kind: 'sensor';
+  id: string;
+  relay: RelayInfo;
+  source: 'espectre';
+  name?: string;
+  chip?: string;
+  firmware?: string;
+  motionState?: 'idle' | 'motion';
+  threshold?: number;
+  ready?: boolean;
+  online: boolean;
+  lastSeen: number;
+}
+
+export type FleetEntry = DeviceEntry | SensorEntry;
+
 /** Link to a device page; the relay key rides along so the id is unambiguous. */
-export const deviceHref = (d: Pick<DeviceEntry, 'id' | 'relay'>) =>
+export const deviceHref = (d: Pick<FleetEntry, 'id' | 'relay'>) =>
   `/devices/${encodeURIComponent(compositeId(d.relay, d.id))}`;
 
 export interface SaleEntry {
@@ -205,6 +229,22 @@ interface WireDeviceSummary {
   reachable?: boolean;
 }
 
+/** Mirrors EspectreSensorSnapshot in relay-proxy/src/espectre-discovery.ts. */
+interface WireSensorSnapshot {
+  kind: 'sensor';
+  id: string;
+  source: 'espectre';
+  name?: string;
+  chip?: string;
+  firmware?: string;
+  url: string;
+  motionState?: 'idle' | 'motion';
+  threshold?: number;
+  ready?: boolean;
+  online: boolean;
+  lastSeen: number;
+}
+
 interface WireTelemetry {
   deviceId: string;
   timestamp: number;
@@ -281,6 +321,7 @@ const byNewest = <T extends { timestamp: number }>(a: T, b: T) => b.timestamp - 
 
 function summaryToEntry(relay: RelayInfo, d: WireDeviceSummary): DeviceEntry {
   return {
+    kind: 'vendor',
     id: d.id,
     relay,
     source: d.source,
@@ -301,26 +342,52 @@ function summaryToEntry(relay: RelayInfo, d: WireDeviceSummary): DeviceEntry {
   };
 }
 
-export async function fetchDevices(): Promise<RelayResult<DeviceEntry[]>> {
+function sensorToEntry(relay: RelayInfo, s: WireSensorSnapshot): SensorEntry {
+  return {
+    kind: 'sensor',
+    id: s.id,
+    relay,
+    source: 'espectre',
+    name: s.name,
+    chip: s.chip,
+    firmware: s.firmware,
+    motionState: s.motionState,
+    threshold: s.threshold,
+    ready: s.ready,
+    online: s.online,
+    lastSeen: s.lastSeen,
+  };
+}
+
+function isWireSensor(d: object): d is WireSensorSnapshot {
+  return 'kind' in d && (d as { kind?: unknown }).kind === 'sensor';
+}
+
+export async function fetchDevices(): Promise<RelayResult<FleetEntry[]>> {
   const { oks, failed } = await fanout((relay) =>
-    _fetch<{ devices: WireDeviceSummary[] }>(relay, '/api/devices'),
+    _fetch<{ devices: Array<WireDeviceSummary | WireSensorSnapshot> }>(relay, '/api/devices'),
   );
   return combine(oks, failed, (all) =>
-    all.flatMap(({ relay, data }) => data.devices.map((d) => summaryToEntry(relay, d))),
+    all.flatMap(({ relay, data }) =>
+      data.devices.map((d) => (isWireSensor(d) ? sensorToEntry(relay, d) : summaryToEntry(relay, d))),
+    ),
   );
 }
 
-async function fetchDeviceFrom(relay: RelayInfo, id: string): Promise<One<DeviceEntry>> {
-  const r = await _fetch<{ device: WireTelemetry; recentSales: WireSale[] }>(
+async function fetchDeviceFrom(relay: RelayInfo, id: string): Promise<One<FleetEntry>> {
+  const r = await _fetch<{ device: WireTelemetry | WireSensorSnapshot; recentSales?: WireSale[] }>(
     relay,
     `/api/devices/${encodeURIComponent(id)}`,
   );
   if (!r.ok) return r.reason === 'unimplemented' ? { ok: false, reason: 'not_found' } : r;
-  const { device, recentSales } = r.data;
+  const { device } = r.data;
+  if (isWireSensor(device)) return { ok: true, data: sensorToEntry(relay, device) };
+  const recentSales = r.data.recentSales ?? [];
   const earned = recentSales.reduce((s, x) => s + BigInt(x.amountMicroUsdc), BigInt(0));
   return {
     ok: true,
     data: {
+      kind: 'vendor',
       id: device.deviceId,
       relay,
       source: device.source,
@@ -354,7 +421,7 @@ async function fetchDeviceFrom(relay: RelayInfo, id: string): Promise<One<Device
  * `id` is either `relayKey:deviceId` (what deviceHref emits) or a bare device
  * id, in which case every relay is asked and the first one that knows it wins.
  */
-export async function fetchDevice(id: string): Promise<RelayResult<DeviceEntry>> {
+export async function fetchDevice(id: string): Promise<RelayResult<FleetEntry>> {
   const { relay, id: deviceId } = splitCompositeId(id);
   if (relay) {
     const r = await fetchDeviceFrom(relay, deviceId);
