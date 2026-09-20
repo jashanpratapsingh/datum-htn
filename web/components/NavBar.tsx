@@ -12,6 +12,7 @@ const LINKS = [
   { href: '/ledger', label: 'Ledger' },
   { href: '/protocol', label: 'Protocol' },
   { href: '/docs', label: 'Docs' },
+  { href: '/connect', label: 'Connect' },
   { href: '/account', label: 'Account' },
 ];
 

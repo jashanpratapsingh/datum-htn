@@ -5,10 +5,15 @@
  * it is derived from the request the way /api/auth/nonce already does.
  */
 export function siteOrigin(req: Request): string {
+  return originFromHeaders(req.headers);
+}
+
+/** Same derivation from a bare Headers object (server components use `headers()`). */
+export function originFromHeaders(h: Headers): string {
   const pinned = process.env.VENDX_SITE_URL?.replace(/\/+$/, '');
   if (pinned) return pinned;
-  const host = req.headers.get('x-forwarded-host') ?? req.headers.get('host') ?? 'localhost:3000';
-  const proto = req.headers.get('x-forwarded-proto') ?? (host.startsWith('localhost') || host.startsWith('127.') ? 'http' : 'https');
+  const host = h.get('x-forwarded-host') ?? h.get('host') ?? 'localhost:3000';
+  const proto = h.get('x-forwarded-proto') ?? (host.startsWith('localhost') || host.startsWith('127.') ? 'http' : 'https');
   return `${proto}://${host}`;
 }
 
