@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from 'next/server';
-import { getRelay, PRIMARY_RELAY } from '@/lib/relays';
+import { PRIMARY_RELAY } from '@/lib/relays';
+import { resolveRelay } from '@/lib/relays.server';
 
 /**
  * Proxy to one relay's device endpoint. `?relay=<key>` picks the relay; the
@@ -7,7 +8,7 @@ import { getRelay, PRIMARY_RELAY } from '@/lib/relays';
  * the process that minted it.
  */
 export async function GET(req: NextRequest) {
-  const relay = getRelay(req.nextUrl.searchParams.get('relay')) ?? PRIMARY_RELAY;
+  const relay = (await resolveRelay(req.nextUrl.searchParams.get('relay'))) ?? PRIMARY_RELAY;
   try {
     const headers: Record<string, string> = {};
     const receipt = req.headers.get('x-payment-receipt');

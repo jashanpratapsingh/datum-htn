@@ -41,9 +41,9 @@ port = 54329
 # Configure one of the supported pooler modes: `transaction`, `session`.
 pool_mode = "transaction"
 # How many server connections to allow per user/database pair.
-default_pool_size = 20
+# managed in the dashboard, not here: default_pool_size = 20
 # Maximum number of client connections allowed.
-max_client_conn = 100
+# managed in the dashboard, not here: max_client_conn = 100
 
 # [db.vault]
 # secret_key = "env(SECRET_VALUE)"
@@ -120,9 +120,9 @@ file_size_limit = "50MiB"
 enabled = true
 # The base URL of your website. Used as an allow-list for redirects and for constructing URLs used
 # in emails.
-site_url = "http://127.0.0.1:3000"
+site_url = "https://web-rouge-six-46.vercel.app"
 # A list of *exact* URLs that auth providers are permitted to redirect to post authentication.
-additional_redirect_urls = ["https://127.0.0.1:3000"]
+additional_redirect_urls = ["http://localhost:3000", "http://127.0.0.1:3000", "https://web-*-jashanpratapsinghs-projects.vercel.app"]
 # How long tokens are valid for, in seconds. Defaults to 3600 (1 hour), maximum 604,800 (1 week).
 jwt_expiry = 3600
 # JWT issuer URL. If not set, defaults to the local API URL (http://127.0.0.1:<port>/auth/v1).
@@ -144,7 +144,7 @@ enable_manual_linking = false
 minimum_password_length = 6
 # Passwords that do not meet the following requirements will be rejected as weak. Supported values
 # are: `letters_digits`, `lower_upper_letters_digits`, `lower_upper_letters_digits_symbols`
-password_requirements = ""
+# managed in the dashboard, not here: password_requirements = ""
 
 [auth.rate_limit]
 # Number of emails that can be sent per hour. Requires auth.email.smtp to be enabled.
@@ -179,9 +179,9 @@ enable_confirmations = false
 # If enabled, users will need to reauthenticate or have logged in recently to change their password.
 secure_password_change = false
 # Controls the minimum amount of time that must pass before sending another signup confirmation or password reset email.
-max_frequency = "1s"
+# managed in the dashboard, not here: max_frequency = "1s"
 # Number of characters used in the email OTP.
-otp_length = 6
+# managed in the dashboard, not here: otp_length = 6
 # Number of seconds before the email OTP expires (defaults to 1 hour).
 otp_expiry = 3600
 
@@ -214,7 +214,7 @@ enable_confirmations = false
 # Template for sending OTP to users
 template = "Your code is {{ .Code }}"
 # Controls the minimum amount of time that must pass before sending another sms otp.
-max_frequency = "5s"
+# managed in the dashboard, not here: max_frequency = "5s"
 
 # Use pre-defined map of phone number to OTP for testing.
 # [auth.sms.test_otp]
@@ -239,7 +239,7 @@ max_frequency = "5s"
 
 # Configure one of the supported SMS providers: `twilio`, `twilio_verify`, `messagebird`, `textlocal`, `vonage`.
 [auth.sms.twilio]
-enabled = false
+# managed in the dashboard, not here: enabled = false
 account_sid = ""
 message_service_sid = ""
 # DO NOT commit your Twilio auth token to git. Use environment variable substitution instead:
@@ -252,16 +252,16 @@ max_enrolled_factors = 10
 
 # Control MFA via App Authenticator (TOTP)
 [auth.mfa.totp]
-enroll_enabled = false
-verify_enabled = false
+# managed in the dashboard, not here: enroll_enabled = false
+# managed in the dashboard, not here: verify_enabled = false
 
 # Configure MFA via Phone Messaging
 [auth.mfa.phone]
 enroll_enabled = false
 verify_enabled = false
-otp_length = 6
+# managed in the dashboard, not here: otp_length = 6
 template = "Your code is {{ .Code }}"
-max_frequency = "5s"
+# managed in the dashboard, not here: max_frequency = "5s"
 
 # Configure MFA via WebAuthn
 # [auth.mfa.web_authn]
