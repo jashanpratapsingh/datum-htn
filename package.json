@@ -17,6 +17,7 @@
     "xlang": "npm run vectors -w @vendx/protocol && node firmware-vendor/test/xlang.mjs",
     "allowance": "npm run build -w @vendx/agent-buyer && npm run allowance -w @vendx/agent-buyer --",
     "sense": "npm run build -w @vendx/relay-proxy && npm run sense -w @vendx/relay-proxy",
-    "fleet": "./scripts/fleet.sh"
+    "fleet": "./scripts/fleet.sh",
+    "mcp": "npm run build -w @vendx/mcp-server && node packages/vendx-mcp/dist/server.js"
   }
 }

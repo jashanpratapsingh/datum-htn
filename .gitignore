@@ -31,6 +31,8 @@ supabase/.branches/
 # fleet runtime
 docs/STATUS.local.md
 .fleet/
+.fleet-*.out
+.fleet-*.err
 
 # badge screen captures — contain the attendee name, badge ID and identity QR
 badge-screen*.png
