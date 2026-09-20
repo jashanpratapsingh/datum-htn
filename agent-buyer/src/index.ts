@@ -4,8 +4,8 @@
  * Orchestrates the full 402 → pay → receipt → 200 arc:
  *   1. GET /api/telemetry  → 402 challenge
  *   2. selectRequirements  → find a payable offer within daily budget
- *   3. mockSolanaTxSig     → simulate USDC transfer (demo only)
- *   4. POST /settle        → facilitator signs a receipt
+ *   3. payUsdc             → real USDC transferChecked on Solana, memo = nonce
+ *   4. POST /settle        → facilitator verifies the transfer on-chain, signs a receipt
  *   5. GET /api/telemetry  → 200 telemetry with receipt attached
  */
 
@@ -17,7 +17,7 @@ import {
   type PaymentRequiredBody,
 } from '@vendx/protocol';
 import { SpendPolicy } from './policy.js';
-import { getWallet, mockSolanaTxSig } from './wallet.js';
+import { FAKE_PAYMENT, BUYER_KEYPAIR_PATH, buyerUsdcBalance, loadBuyerKeypair, mockSolanaTxSig, payUsdc } from './wallet.js';
 
 const RELAY_URL = process.env.RELAY_URL ?? 'http://localhost:3402';
 const NETWORK = 'solana-devnet' as const;
@@ -50,9 +50,17 @@ async function postSettle(
 
 export async function runBuyerOnce(): Promise<void> {
   const policy = new SpendPolicy();
-  const wallet = getWallet();
+  const wallet = loadBuyerKeypair();
 
-  console.log(`[agent-buyer] wallet: ${wallet.address.slice(0, 16)}…`);
+  console.log(`[agent-buyer] wallet: ${wallet.publicKey.toBase58()} (${BUYER_KEYPAIR_PATH})`);
+  if (!FAKE_PAYMENT) {
+    const usdc = await buyerUsdcBalance(NETWORK);
+    if (usdc === null) {
+      console.error('[agent-buyer] buyer wallet has no USDC token account on this network — fund it first');
+      return;
+    }
+    console.log(`[agent-buyer] USDC balance: $${microUsdcToUsd(usdc.toString()).toFixed(6)}`);
+  }
   console.log(
     `[agent-buyer] daily budget remaining: $${microUsdcToUsd(policy.remainingToday.toString()).toFixed(4)}`,
   );
@@ -92,9 +100,22 @@ export async function runBuyerOnce(): Promise<void> {
     return;
   }
 
-  // Step 3: simulate Solana transfer
-  const txSig = mockSolanaTxSig();
-  console.log(`[agent-buyer] → execute  txSig=${txSig.slice(0, 16)}… (simulator)`);
+  // Step 3: pay. Real USDC transfer unless VENDX_FAKE_PAYMENT=1 opts out.
+  let txSig: string;
+  if (FAKE_PAYMENT) {
+    txSig = mockSolanaTxSig();
+    console.log(`[agent-buyer] → execute  txSig=${txSig.slice(0, 16)}… (FAKE — no payment happened; VENDX_FAKE_PAYMENT=1)`);
+  } else {
+    console.log(`[agent-buyer] → transfer ${req.maxAmountRequired} µUSDC to ${req.payTo} on ${req.network} …`);
+    const paid = await payUsdc({
+      payTo: req.payTo,
+      amountMicroUsdc: req.maxAmountRequired,
+      network: req.network,
+      nonce: challenge.nonce,
+    });
+    txSig = paid.signature;
+    console.log(`[agent-buyer] ✓ confirmed  ${paid.explorer}`);
+  }
 
   // Step 4: settle and receive signed receipt
   console.log(`[agent-buyer] → POST ${RELAY_URL}/settle`);

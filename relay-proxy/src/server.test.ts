@@ -215,8 +215,9 @@ test('Replay attack: using the same receipt twice → second attempt 402 { error
 // Unknown nonce
 // ---------------------------------------------------------------------------
 
-test('Unknown nonce: settle with never-issued nonce → receipt fails with nonce_unknown', async () => {
-  // /settle signs anything — it doesn't validate that the nonce was issued
+test('Unknown nonce: /settle refuses to sign for a nonce this relay never issued', async () => {
+  // Even in trust mode the facilitator checks the nonce against its own store;
+  // no receipt exists for the device to reject.
   const unknownNonce = 'nonce-that-was-never-issued-by-any-challenge';
   const settleBody = JSON.stringify({
     nonce: unknownNonce,
@@ -226,14 +227,24 @@ test('Unknown nonce: settle with never-issued nonce → receipt fails with nonce
     network: 'solana-devnet',
   });
   const r1 = await post('/settle', settleBody);
-  assert.equal(r1.status, 200);
-  const { receipt } = (await r1.json()) as { receipt: string; success: boolean };
+  assert.equal(r1.status, 402);
+  const body = (await r1.json()) as { success: boolean; errorReason: string };
+  assert.equal(body.success, false);
+  assert.equal(body.errorReason, 'nonce_unknown');
+});
 
-  // The device rejects the receipt because the nonce was never issued
-  const r2 = await get('/api/telemetry', { 'X-Payment-Receipt': receipt });
-  assert.equal(r2.status, 402);
-  const body = (await r2.json()) as { error: string };
-  assert.equal(body.error, 'nonce_unknown');
+test('Signature reuse: the same txSignature cannot settle two different nonces', async () => {
+  const r1 = await get('/api/telemetry');
+  const { nonce: n1 } = (await r1.json()) as { nonce: string };
+  const r2 = await get('/api/telemetry');
+  const { nonce: n2 } = (await r2.json()) as { nonce: string };
+  const sig = 'SimTx_reused_once';
+  const mk = (nonce: string) =>
+    JSON.stringify({ nonce, txSignature: sig, payTo: VENDOR_WALLET, amount: '100', network: 'solana-devnet' });
+  assert.equal((await post('/settle', mk(n1))).status, 200);
+  const dup = await post('/settle', mk(n2));
+  assert.equal(dup.status, 402);
+  assert.equal(((await dup.json()) as { errorReason: string }).errorReason, 'signature_reused');
 });
 
 // ---------------------------------------------------------------------------

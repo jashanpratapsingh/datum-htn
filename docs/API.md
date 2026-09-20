@@ -339,3 +339,6 @@ public key compiled in — rotating it requires a firmware rebuild.
 | `VENDX_PY` | `.venv-pio/bin/python` | Python interpreter for `scripts/badge.py` |
 | `VENDX_BADGE_SCRIPT` | `scripts/badge.py` | Serial bridge script |
 | `VENDX_BADGE_PORT` | `/dev/cu.usbmodem101` | USB serial device for the HTN badge |
+| `VENDX_SETTLEMENT` | `verify` | `verify`: /settle checks the USDC transfer on-chain before signing. `trust`: signs unverified (demo). |
+| `VENDX_VENDOR_WALLET` | placeholder | Vendor's Solana wallet quoted as `payTo`; set it to a key you control. |
+| `VENDX_SOLANA_RPC` | public devnet/mainnet | RPC endpoint used to verify payments. |

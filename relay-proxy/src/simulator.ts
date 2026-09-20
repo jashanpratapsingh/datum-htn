@@ -16,7 +16,13 @@ import {
 import { getKeys } from './keys.js';
 import { issueNonce, consumeNonce } from './nonce-store.js';
 
-export const VENDOR_WALLET = 'FHcgXc3YzNnq8WKcH8GaDvbKhJ4ycKxHnR7jzA8zAHU';
+/**
+ * The vendor's Solana wallet (owner, not the ATA). Set VENDX_VENDOR_WALLET to a
+ * key you control — scripts/relay.sh derives it from ~/.vendx/vendor-devnet.json.
+ * The fallback is a placeholder nobody holds; payments to it are lost.
+ */
+export const VENDOR_WALLET =
+  process.env.VENDX_VENDOR_WALLET ?? 'FHcgXc3YzNnq8WKcH8GaDvbKhJ4ycKxHnR7jzA8zAHU';
 export const VENDOR_PRICE_USD = 0.0001;
 const NETWORK = 'solana-devnet' as const;
 

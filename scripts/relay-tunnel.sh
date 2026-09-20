@@ -2,10 +2,12 @@
 # Expose the laptop relay (port 3402) to the deployed Vercel site.
 #
 # The relay must run on the laptop because it owns the badge's USB port, so the
-# public site reaches it through a cloudflared "quick tunnel". Quick tunnels
-# need no Cloudflare account but the *.trycloudflare.com hostname changes every
-# time cloudflared restarts, and NEXT_PUBLIC_RELAY_URL is baked into the Next.js
-# build — so a new tunnel always means: update the Vercel env var, redeploy.
+# public site reaches it through cloudflared. The primary path is the *named*
+# tunnel `vendx-relay` at https://relay.vendx.biz (stable hostname; cloudflared
+# restarts need no redeploy). The fallback is a "quick tunnel": no Cloudflare
+# account needed, but the *.trycloudflare.com hostname changes every time
+# cloudflared restarts, and NEXT_PUBLIC_RELAY_URL is baked into the Next.js
+# build — so a new quick tunnel always means: update the Vercel env var, redeploy.
 #
 #   scripts/relay-tunnel.sh up        start tunnel (if needed), point Vercel at it, redeploy
 #   scripts/relay-tunnel.sh status    show tunnel URL + relay health through it
@@ -33,7 +35,16 @@ NAMED_HOST="${VENDX_RELAY_HOST:-relay.vendx.biz}"
 NLOG="$STATE/cloudflared-named.log"; NPIDF="$STATE/cloudflared-named.pid"
 
 named_pid() { [ -f "$NPIDF" ] && kill -0 "$(cat "$NPIDF")" 2>/dev/null && cat "$NPIDF" || pgrep -f "cloudflared tunnel.*run $NAMED_TUNNEL" | head -1 || true; }
-named_healthy() { [ -n "$NAMED_HOST" ] && curl -s -m 8 "https://$NAMED_HOST/health" 2>/dev/null | grep -q '"status"'; }
+# Resolve the named host at Cloudflare's resolver, not the local one: after the
+# zone moved to Cloudflare the laptop's resolver kept the old Porkbun records
+# cached for a while and made a healthy tunnel look dead (2026-09-20).
+named_ip() { dig +short @1.1.1.1 "$NAMED_HOST" A 2>/dev/null | grep -E '^[0-9.]+$' | head -1 || true; }
+named_healthy() {
+  [ -n "$NAMED_HOST" ] || return 1
+  local ip; ip="$(named_ip)"
+  curl -s -m 8 ${ip:+--resolve "$NAMED_HOST:443:$ip"} "https://$NAMED_HOST/health" 2>/dev/null | grep -q '"status"'
+}
+local_dns_stale() { [ -n "$(named_ip)" ] && [ "$(dig +short "$NAMED_HOST" A 2>/dev/null | grep -E '^[0-9.]+$' | head -1)" != "$(named_ip)" ]; }
 named_start() {
   [ -f "$HOME/.cloudflared/config.yml" ] || return 0
   if [ -z "$(named_pid)" ]; then
@@ -101,14 +112,21 @@ cmd_status() {
   if [ -n "$NAMED_HOST" ]; then
     local npid; npid="$(named_pid)"
     if [ -n "$npid" ]; then echo "named tunnel $NAMED_TUNNEL: running (pid $npid)"; else echo "named tunnel $NAMED_TUNNEL: not running"; fi
-    if named_healthy; then echo "https://$NAMED_HOST: answering"; else echo "https://$NAMED_HOST: not resolving/answering (public NS: $(dig +short NS "${NAMED_HOST#*.}" | head -1 || echo ?))"; fi
+    if named_healthy; then
+      echo "https://$NAMED_HOST: answering (resolved via 1.1.1.1)"
+      local_dns_stale && echo "  note: this laptop's resolver still returns a stale record for $NAMED_HOST; the public internet and Vercel are unaffected. Flush: sudo dscacheutil -flushcache; sudo killall -HUP mDNSResponder"
+    else echo "https://$NAMED_HOST: not resolving/answering (public NS: $(dig +short NS "${NAMED_HOST#*.}" | head -1 || echo ?))"; fi
   else
     echo "named tunnel: none configured (set VENDX_RELAY_HOST once the zone is on Cloudflare)"
   fi
   local pid; pid="$(tunnel_pid)"
-  if [ -n "$pid" ]; then echo "cloudflared: running (pid $pid)"; else echo "cloudflared: not running"; fi
-  URL="$(tunnel_url)"; echo "url: ${URL:-none}"
-  [ -n "$URL" ] && { printf 'relay via tunnel: '; curl -s -m 10 "$URL/health" || echo "unreachable"; echo; }
+  if [ -n "$pid" ]; then
+    echo "quick tunnel: running (pid $pid)"
+    URL="$(tunnel_url)"; echo "url: ${URL:-none}"
+    [ -n "$URL" ] && { printf 'relay via quick tunnel: '; curl -s -m 10 "$URL/health" || echo "unreachable"; echo; }
+  else
+    echo "quick tunnel: not running (fallback only; the named tunnel is the primary path)"
+  fi
   echo "deployed-for: $(cat "$URLF.deployed" 2>/dev/null || echo none)"
 }
 
