@@ -11,6 +11,8 @@ interface Props {
   /** Where to send the user afterwards (the client's redirect_uri with the code), or null on the dashboard. */
   back: string | null;
   clientName?: string;
+  /** Inside another panel (the agent card): no frame of its own, full width. */
+  embedded?: boolean;
 }
 
 const PRESETS = [
@@ -24,7 +26,7 @@ const PRESETS = [
  * USDC (what readings cost) and a little SOL (what transactions cost). The
  * balance shown afterwards is read back from the chain, not assumed.
  */
-export default function FundAgentWallet({ agentId, walletPubkey, back, clientName }: Props) {
+export default function FundAgentWallet({ agentId, walletPubkey, back, clientName, embedded = false }: Props) {
   const wallet = usePhantom();
   const [usdc, setUsdc] = useState('0.50');
   const [sol, setSol] = useState(0.01);
@@ -67,7 +69,7 @@ export default function FundAgentWallet({ agentId, walletPubkey, back, clientNam
   }
 
   return (
-    <div className="panel mx-auto w-full max-w-xl" data-fund={phase}>
+    <div className={embedded ? 'w-full' : 'panel mx-auto w-full max-w-xl'} data-fund={phase}>
       <div className="flex flex-col gap-2 px-5 py-5">
         <p className="plate">agent wallet · devnet</p>
         <div className="flex flex-wrap items-center gap-2">

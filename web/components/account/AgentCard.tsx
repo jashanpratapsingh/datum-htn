@@ -10,8 +10,6 @@ const input = 'readout w-24 rounded-[8px] border border-rule bg-pill px-2.5 py-1
 /** One connected agent: identity, wallet + balance, caps (editable), connections, fund, revoke. */
 export default function AgentCard({ agent }: { agent: AgentView }) {
   const a = agent;
-  const spentToday = null; // per-day figure lives in the MCP budget tool; the card shows lifetime spend
-  void spentToday;
   return (
     <li id={`agent-${a.id}`} className="flex flex-col [&+&]:border-t [&+&]:border-rule" data-agent={a.revokedAt ? 'revoked' : 'active'}>
       <div className="flex flex-wrap items-start justify-between gap-3 px-4 py-4">
@@ -67,7 +65,7 @@ export default function AgentCard({ agent }: { agent: AgentView }) {
 
           {a.walletPubkey ? (
             <div className="border-t border-rule">
-              <FundAgentWallet agentId={a.id} walletPubkey={a.walletPubkey} back={null} />
+              <FundAgentWallet agentId={a.id} walletPubkey={a.walletPubkey} back={null} embedded />
             </div>
           ) : (
             <p className="border-t border-rule px-4 py-3 text-sm text-ink-muted">No wallet yet: it is created the first time this agent calls the MCP server.</p>
