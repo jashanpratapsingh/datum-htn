@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { randomBytes } from 'node:crypto';
 
 /**
  * Opt-in end-to-end: creates a real account, mints an agent key, buys one
@@ -9,8 +10,12 @@ import { test, expect } from '@playwright/test';
 test.describe('accounts and purchases', () => {
   test.skip(!process.env.E2E_SUPABASE, 'set E2E_SUPABASE=1 to run against real Supabase');
 
+  // Throwaway credentials for a throwaway account on the real Supabase project:
+  // a fresh, cryptographically random pair every run. Never a fixed literal here,
+  // both so no reusable credential lands in git and so secret scanners have
+  // nothing to flag.
   const email = `e2e+${Date.now()}@vendx.test`;
-  const password = `pw-${Math.random().toString(36).slice(2)}-x1`;
+  const password = freshPassword();
 
   test('sign up, register an agent, buy a reading, see it in the account', async ({ page }) => {
     test.setTimeout(180_000);
@@ -57,3 +62,8 @@ test.describe('accounts and purchases', () => {
     await expect(page).toHaveURL(/\/login\?next=%2Faccount/);
   });
 });
+
+/** 24 random bytes as base64url: 192 bits of entropy, 32 URL-safe characters. */
+function freshPassword(): string {
+  return randomBytes(24).toString('base64url');
+}
