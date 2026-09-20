@@ -10,8 +10,9 @@
  * The SIWS text is built by the same `buildSiwsMessage` the server uses,
  * injected as source, so the mock cannot drift from the real format.
  *
- * With `payments: true`, `signAndSendTransaction` serializes the transaction,
- * Node signs it with the same key and sends it to devnet. That is a real
+ * With `payments: true`, `signTransaction` / `signAndSendTransaction` serialize
+ * the transaction and Node signs it with the same key (the page, or Node, then
+ * sends it to devnet). That is a real
  * payment; only use it with a funded key (VENDX_E2E_KEYPAIR).
  */
 
@@ -52,6 +53,12 @@ export async function installMockPhantom(page: Page, opts: MockPhantomOptions = 
         tx.partialSign(keypair);
         return conn.sendRawTransaction(tx.serialize(), { preflightCommitment: 'confirmed' });
       });
+      // signTransaction path: sign only, hand the bytes back; the page sends them.
+      await page.exposeFunction('__vendxSignTx', async (b64: string) => {
+        const tx = Transaction.from(Buffer.from(b64, 'base64'));
+        tx.partialSign(keypair);
+        return tx.serialize().toString('base64');
+      });
     }
   }
 
@@ -67,6 +74,7 @@ export async function installMockPhantom(page: Page, opts: MockPhantomOptions = 
     type W = {
       __vendxSign: (b: string) => Promise<string>;
       __vendxSendTx?: (b: string) => Promise<string>;
+      __vendxSignTx?: (b: string) => Promise<string>;
       __mockPhantomEmit?: (ev: string, a?: unknown) => void;
       phantom?: unknown;
     };
@@ -106,6 +114,13 @@ export async function installMockPhantom(page: Page, opts: MockPhantomOptions = 
       async signMessage(bytes: Uint8Array) {
         const signature = fromB64(await w.__vendxSign(b64(bytes)));
         return { signature, publicKey: pk };
+      },
+      async signTransaction(tx: { serialize(o: { requireAllSignatures: boolean; verifySignatures: boolean }): Uint8Array }) {
+        if (!w.__vendxSignTx) throw new Error('mock phantom: payments disabled in this test');
+        const ser = tx.serialize({ requireAllSignatures: false, verifySignatures: false });
+        const signed = fromB64(await w.__vendxSignTx(b64(ser)));
+        // Like Phantom, return something the page can `.serialize()` and send itself.
+        return { serialize: () => signed };
       },
       async signAndSendTransaction(tx: { serialize(o: { requireAllSignatures: boolean; verifySignatures: boolean }): Uint8Array }) {
         if (!w.__vendxSendTx) throw new Error('mock phantom: payments disabled in this test');

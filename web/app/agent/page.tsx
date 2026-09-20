@@ -195,14 +195,15 @@ export default function AgentPage() {
         let sent: string | undefined;
         try {
           setStep(4, 'running', 'waiting for Phantom…');
-          const { tx, lastValidBlockHeight } = await solana.buildUsdcPayment(payReq);
-          const res = await wallet.provider.signAndSendTransaction(tx, { preflightCommitment: 'confirmed' });
-          sent = res.signature;
-          txSig = sent;
-          setStep(4, 'done', `sig: ${txSig.slice(0, 16)}… signed by Phantom`);
-          setStep(5, 'running', 'awaiting confirmed commitment on devnet');
-          await solana.confirmSignature(txSig, lastValidBlockHeight, payReq.network);
-          setStep(5, 'done', `confirmed · ${solana.explorerTx(txSig, payReq.network)}`);
+          // Phantom signs; the page sends on devnet and re-broadcasts until
+          // confirmed, so the extension's network setting cannot misroute it.
+          const paid = await solana.payWithPhantom(wallet.provider, payReq, (sig) => {
+            sent = sig;
+            setStep(4, 'done', `sig: ${sig.slice(0, 16)}… signed by Phantom, sent to devnet`);
+            setStep(5, 'running', 'awaiting confirmed commitment on devnet');
+          });
+          txSig = paid.signature;
+          setStep(5, 'done', `confirmed · ${paid.explorer}`);
         } catch (e) {
           const msg = isUserRejection(e) ? 'Rejected in Phantom' : solana.describePaymentError(e);
           setStep(sent ? 5 : 4, 'error', msg);
@@ -335,7 +336,7 @@ export default function AgentPage() {
             {/* Who pays. Never let a simulated run look like money moved. */}
             <p className="readout text-[12px] text-ink-muted" data-agent="payer">
               {live && wallet.wallet
-                ? `Paying real devnet USDC from ${shortAddress(wallet.wallet)} via Phantom.`
+                ? `Paying real devnet USDC from ${shortAddress(wallet.wallet)} via Phantom. Set Phantom to Solana devnet (Settings → Developer Settings → Testnet Mode) so its preview matches what is sent.`
                 : wallet.status === 'connected'
                   ? 'Signed in, but Phantom is not attached in this tab — reconnect to pay; this run is simulated.'
                   : 'Not connected: payment is simulated. Connect Phantom (top right) to pay real devnet USDC.'}

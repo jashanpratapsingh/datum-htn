@@ -45,7 +45,7 @@ export function WalletMenu({ id, floating, onClose }: { id: string; floating: bo
       data-wallet="menu"
     >
       <div className="px-4 py-3">
-        <div className="plate">Phantom · Solana devnet</div>
+        <div className="plate">Phantom · balances read on Solana devnet</div>
         <div className="readout mt-1 break-all text-[13px] text-ink" data-wallet="full-address">
           {wallet}
         </div>

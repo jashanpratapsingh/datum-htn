@@ -38,6 +38,8 @@ export interface PhantomProvider {
   signMessage(message: Uint8Array, display?: 'utf8' | 'hex'): Promise<{ signature: Uint8Array; publicKey?: PublicKeyLike }>;
   signIn?(input?: SiwsInput): Promise<PhantomSignInOutput>;
   signAndSendTransaction(tx: Transaction, opts?: SendOptions): Promise<{ signature: string }>;
+  /** Sign only; the page sends the bytes itself so the cluster is always ours (see lib/wallet/solana.ts). */
+  signTransaction?(tx: Transaction): Promise<Transaction>;
   on(event: PhantomEvent, handler: (arg?: unknown) => void): void;
   off?(event: PhantomEvent, handler: (arg?: unknown) => void): void;
   removeListener?(event: PhantomEvent, handler: (arg?: unknown) => void): void;

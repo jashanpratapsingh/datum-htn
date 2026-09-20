@@ -152,7 +152,85 @@ export async function buildUsdcPayment(req: PaymentRequest): Promise<{ tx: Trans
   return { tx, lastValidBlockHeight };
 }
 
-/** Poll signature status until confirmed, or until the blockhash expires. */
+export type PaymentPhase = 'build' | 'sign' | 'send' | 'confirm';
+
+/** A payment failure that knows which step it came from, so the UI can say something useful. */
+export class PaymentError extends Error {
+  constructor(
+    public readonly phase: PaymentPhase,
+    message: string,
+    public readonly signature?: string,
+    options?: { cause?: unknown },
+  ) {
+    super(message, options);
+    this.name = 'PaymentError';
+  }
+}
+
+function errText(e: unknown): string {
+  if (e instanceof Error) {
+    const logs = (e as { logs?: unknown }).logs;
+    const tail = Array.isArray(logs) ? logs.filter((l) => typeof l === 'string').slice(-3).join(' | ') : '';
+    return tail ? `${e.message} — ${tail}` : e.message;
+  }
+  return String(e);
+}
+
+/**
+ * Dry-run on OUR connection before Phantom is even asked. Phantom simulates on
+ * whatever network the extension is set to, which may not be devnet; this one
+ * is always the cluster the relay will check.
+ */
+export async function simulatePayment(tx: Transaction, network: VendxNetwork = 'solana-devnet'): Promise<void> {
+  const conn = getConnection(network);
+  const { value } = await conn.simulateTransaction(tx);
+  if (value.err) {
+    const logs = (value.logs ?? []).slice(-3).join(' | ');
+    throw new PaymentError('build', `would fail on devnet: ${JSON.stringify(value.err)}${logs ? ` — ${logs}` : ''}`);
+  }
+}
+
+/**
+ * Send signed bytes and poll until confirmed. The bytes are re-broadcast every
+ * few polls: public devnet RPCs drop transactions without telling anyone, and
+ * a re-send of the same signed transaction is idempotent.
+ */
+export async function sendAndConfirm(
+  raw: Uint8Array,
+  lastValidBlockHeight: number,
+  network: VendxNetwork = 'solana-devnet',
+  onSent?: (signature: string) => void,
+  intervalMs = 1500,
+): Promise<string> {
+  const conn = getConnection(network);
+  let signature: string;
+  try {
+    signature = await conn.sendRawTransaction(raw, { skipPreflight: false, preflightCommitment: 'confirmed', maxRetries: 3 });
+  } catch (e) {
+    throw new PaymentError('send', errText(e), undefined, { cause: e });
+  }
+  onSent?.(signature);
+
+  for (let tick = 1; ; tick++) {
+    const { value } = await conn.getSignatureStatuses([signature]);
+    const s = value[0];
+    if (s) {
+      if (s.err) throw new PaymentError('confirm', `transaction failed on-chain: ${JSON.stringify(s.err)}`, signature);
+      if (s.confirmationStatus === 'confirmed' || s.confirmationStatus === 'finalized') return signature;
+    }
+    const height = await conn.getBlockHeight('confirmed');
+    if (height > lastValidBlockHeight) {
+      throw new PaymentError('confirm', 'blockhash expired before the transaction confirmed', signature);
+    }
+    if (tick % 3 === 0) {
+      // Same bytes, same signature: harmless if the first send already landed.
+      await conn.sendRawTransaction(raw, { skipPreflight: true, maxRetries: 0 }).catch(() => undefined);
+    }
+    await new Promise((r) => setTimeout(r, intervalMs));
+  }
+}
+
+/** Poll signature status until confirmed, or until the blockhash expires (for wallet-sent transactions). */
 export async function confirmSignature(
   signature: string,
   lastValidBlockHeight: number,
@@ -164,11 +242,13 @@ export async function confirmSignature(
     const { value } = await conn.getSignatureStatuses([signature]);
     const s = value[0];
     if (s) {
-      if (s.err) throw new Error(`transaction failed on-chain: ${JSON.stringify(s.err)}`);
+      if (s.err) throw new PaymentError('confirm', `transaction failed on-chain: ${JSON.stringify(s.err)}`, signature);
       if (s.confirmationStatus === 'confirmed' || s.confirmationStatus === 'finalized') return;
     }
     const height = await conn.getBlockHeight('confirmed');
-    if (height > lastValidBlockHeight) throw new Error('blockhash expired before the transaction confirmed');
+    if (height > lastValidBlockHeight) {
+      throw new PaymentError('confirm', 'blockhash expired before the transaction confirmed', signature);
+    }
     await new Promise((r) => setTimeout(r, intervalMs));
   }
 }
@@ -178,13 +258,41 @@ export interface PaymentResult {
   explorer: string;
 }
 
-/** Ask Phantom to sign and send the payment, then wait for confirmation. */
+/**
+ * Pay through Phantom.
+ *
+ * Preferred path: Phantom only SIGNS (`signTransaction`) and this page sends
+ * the bytes on its own devnet connection, then polls and re-broadcasts until
+ * confirmed. `signAndSendTransaction` would submit through Phantom's RPC for
+ * whatever network the extension is on; with Phantom on mainnet a devnet
+ * blockhash is simply unknown there, the send fails with "Blockhash not
+ * found", and the user sees a misleading "expired". Older providers without
+ * `signTransaction` still take that path.
+ *
+ * User rejections (code 4001) are rethrown untouched so `isUserRejection`
+ * still recognises them.
+ */
 export async function payWithPhantom(
   provider: PhantomProvider,
   req: PaymentRequest,
   onSent?: (signature: string) => void,
 ): Promise<PaymentResult> {
-  const { tx, lastValidBlockHeight } = await buildUsdcPayment(req);
+  let tx: Transaction;
+  let lastValidBlockHeight: number;
+  try {
+    ({ tx, lastValidBlockHeight } = await buildUsdcPayment(req));
+  } catch (e) {
+    throw new PaymentError('build', errText(e), undefined, { cause: e });
+  }
+  await simulatePayment(tx, req.network);
+
+  if (typeof provider.signTransaction === 'function') {
+    const signed = await provider.signTransaction(tx);
+    const raw = signed.serialize();
+    const signature = await sendAndConfirm(raw, lastValidBlockHeight, req.network, onSent);
+    return { signature, explorer: explorerTx(signature, req.network) };
+  }
+
   const { signature } = await provider.signAndSendTransaction(tx, { preflightCommitment: 'confirmed' });
   onSent?.(signature);
   await confirmSignature(signature, lastValidBlockHeight, req.network);
@@ -194,8 +302,14 @@ export async function payWithPhantom(
 /** Map RPC / wallet errors to something a person can act on. */
 export function describePaymentError(e: unknown): string {
   const msg = e instanceof Error ? e.message : String(e);
+  const phase = e instanceof PaymentError ? e.phase : undefined;
   if (/insufficient lamports|insufficient funds for rent|0x1\b.*lamports/i.test(msg)) return 'not enough devnet SOL for fees (faucet.solana.com)';
   if (/insufficient funds|custom program error: 0x1\b/i.test(msg)) return 'not enough devnet USDC (faucet.circle.com)';
-  if (/blockhash/i.test(msg)) return 'transaction expired before it confirmed — try again';
+  if (/blockhash/i.test(msg)) {
+    if (phase === 'confirm') return 'sent to devnet but not confirmed before its blockhash expired (nothing was charged) — run again';
+    if (phase === 'send') return 'the transaction expired before it was sent — approving in Phantom took longer than the ~1 minute window; run again and approve promptly';
+    return 'transaction expired before it confirmed — try again';
+  }
+  if (phase === 'build') return msg;
   return msg;
 }
