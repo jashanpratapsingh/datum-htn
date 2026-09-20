@@ -48,6 +48,8 @@ export interface SettleOk {
   success: true;
   receipt: string;
   settleHeader: string;
+  /** Fee payer read from the confirmed transaction; 'unverified' in trust mode. */
+  payer: string;
 }
 
 export interface SettleErr {
@@ -162,5 +164,6 @@ export async function settle(req: SettleRequest): Promise<SettleOk | SettleErr> 
     success: true,
     receipt: encodeReceipt(signed),
     settleHeader: encodeSettleHeader(settleResp),
+    payer,
   };
 }

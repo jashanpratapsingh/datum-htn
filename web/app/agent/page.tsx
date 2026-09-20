@@ -6,8 +6,11 @@ import PanelHeader from '@/components/PanelHeader';
 import { Panel } from '@/components/Panel';
 import { SourceBadge } from '@/components/SourceBadge';
 import { Play, CheckCircle, XCircle, AlertCircle } from 'lucide-react';
-import type { PaymentRequiredBody } from '@vendx/protocol';
+import type { PaymentRequiredBody, VendxNetwork } from '@vendx/protocol';
 import { RELAYS, MULTI_RELAY, type RelayInfo } from '@/lib/relays';
+import { usePhantom } from '@/components/wallet/WalletProvider';
+import { isUserRejection } from '@/lib/wallet/phantom';
+import { shortAddress } from '@/lib/wallet/siws';
 
 function microToUsd(micro: string): string {
   return (Number(micro) / 1_000_000).toFixed(6);
@@ -31,8 +34,8 @@ const STEPS: HandshakeStep[] = [
   { label: 'Device issues 402 challenge', detail: 'nonce minted, 60s TTL', party: 'device' },
   { label: 'Agent consults APEX policy', detail: '$5.00/day spend cap', party: 'policy' },
   { label: 'Policy approved', detail: 'within daily budget', party: 'policy' },
-  { label: 'USDC transfer submitted', detail: 'mock tx signature, simulator', party: 'chain' },
-  { label: 'Solana confirms transaction', detail: 'devnet — no chain latency', party: 'chain' },
+  { label: 'USDC transfer submitted', detail: 'transferChecked + memo = nonce; Phantom signs when connected', party: 'chain' },
+  { label: 'Solana confirms transaction', detail: 'confirmed commitment on devnet', party: 'chain' },
   { label: 'Agent replays receipt', detail: 'POST /settle → GET /api/telemetry', party: 'agent' },
   { label: 'Device verifies offline', detail: 'Ed25519 + nonce check ~40ms', party: 'device' },
   { label: 'Telemetry dispensed', detail: 'source=badge or simulator', party: 'device' },
@@ -116,6 +119,10 @@ export default function AgentPage() {
   // that relay's process only. The picker chooses the vendor for the whole run.
   const [relay, setRelay] = useState<RelayInfo>(RELAYS[0]);
   const q = `?relay=${encodeURIComponent(relay.key)}`;
+  // With Phantom attached the payment is real devnet USDC; otherwise the
+  // signature is fabricated and a verifying relay will (correctly) refuse it.
+  const wallet = usePhantom();
+  const live = wallet.status === 'connected' && wallet.providerReady && !!wallet.provider && !!wallet.wallet;
 
   const setStep = useCallback((i: number, status: StepStatus, detail?: string) => {
     setState((prev) => {
@@ -168,13 +175,53 @@ export default function AgentPage() {
       setStep(3, 'done', `payTo: ${req.payTo.slice(0, 10)}…`);
 
       setStep(4, 'running');
-      const txSig = 'SimTx' + randomHex(29);
-      await new Promise((r) => setTimeout(r, 250));
-      setStep(4, 'done', `sig: ${txSig.slice(0, 16)}…`);
+      let txSig: string;
+      if (live && wallet.provider && wallet.wallet) {
+        const solana = await import('@/lib/wallet/solana');
+        const payReq = {
+          payer: wallet.wallet,
+          payTo: req.payTo,
+          amountMicroUsdc: req.maxAmountRequired,
+          nonce: challenge.nonce,
+          network: req.network as VendxNetwork,
+        };
+        const pre = solana.preflight(payReq, wallet.balances);
+        if (!pre.ok) {
+          setStep(4, 'error', pre.reason);
+          setState((p) => ({ ...p, error: `Cannot pay: ${pre.reason}` }));
+          setRunning(false);
+          return;
+        }
+        let sent: string | undefined;
+        try {
+          setStep(4, 'running', 'waiting for Phantom…');
+          // Phantom signs; the page sends on devnet and re-broadcasts until
+          // confirmed, so the extension's network setting cannot misroute it.
+          const paid = await solana.payWithPhantom(wallet.provider, payReq, (sig) => {
+            sent = sig;
+            setStep(4, 'done', `sig: ${sig.slice(0, 16)}… signed by Phantom, sent to devnet`);
+            setStep(5, 'running', 'awaiting confirmed commitment on devnet');
+          });
+          txSig = paid.signature;
+          setStep(5, 'done', `confirmed · ${paid.explorer}`);
+          // The pill polls every 30 s; the payer just watched money move, so show it now.
+          void wallet.refreshBalances();
+        } catch (e) {
+          const msg = isUserRejection(e) ? 'Rejected in Phantom' : solana.describePaymentError(e);
+          setStep(sent ? 5 : 4, 'error', msg);
+          setState((p) => ({ ...p, error: `Payment failed: ${msg}` }));
+          setRunning(false);
+          return;
+        }
+      } else {
+        txSig = 'SimTx' + randomHex(29);
+        await new Promise((r) => setTimeout(r, 250));
+        setStep(4, 'done', `sig: ${txSig.slice(0, 16)}… simulated — no wallet connected`);
 
-      setStep(5, 'running');
-      await new Promise((r) => setTimeout(r, 300));
-      setStep(5, 'done', 'devnet simulator — no chain latency');
+        setStep(5, 'running');
+        await new Promise((r) => setTimeout(r, 300));
+        setStep(5, 'done', 'simulated — nothing sent to Solana');
+      }
 
       setStep(6, 'running');
       const settleRes = await fetch(`/api/settle${q}`, {
@@ -191,7 +238,11 @@ export default function AgentPage() {
       const settleData = await settleRes.json() as { receipt?: string; error?: string };
       if (!settleRes.ok || !settleData.receipt) {
         setStep(6, 'error', settleData.error ?? `HTTP ${settleRes.status}`);
-        setState((p) => ({ ...p, error: `Settlement failed: ${settleData.error ?? settleRes.status}` }));
+        const hint =
+          !live && settleData.error === 'payment_not_found'
+            ? ' — this relay verifies payments on-chain; connect Phantom (top right) to pay for real'
+            : '';
+        setState((p) => ({ ...p, error: `Settlement failed: ${settleData.error ?? settleRes.status}${hint}` }));
         setRunning(false);
         return;
       }
@@ -215,13 +266,14 @@ export default function AgentPage() {
       await new Promise((r) => setTimeout(r, 150));
       setState((p) => ({ ...p, telemetry: body2 }));
       setStep(8, 'done', `source=${body2.source ?? 'unknown'}`);
+      if (live) void wallet.refreshBalances();
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       setState((p) => ({ ...p, error: msg }));
     }
 
     setRunning(false);
-  }, [setStep, relay, q]);
+  }, [setStep, relay, q, live, wallet]);
 
   const { statuses, details, challenge, telemetry, error } = state;
   const doneCount = statuses.filter((s) => s === 'done').length;
@@ -282,6 +334,15 @@ export default function AgentPage() {
                 </span>
               )}
             </div>
+
+            {/* Who pays. Never let a simulated run look like money moved. */}
+            <p className="readout text-[12px] text-ink-muted" data-agent="payer">
+              {live && wallet.wallet
+                ? `Paying real devnet USDC from ${shortAddress(wallet.wallet)} via Phantom. Set Phantom to Solana devnet (Settings → Developer Settings → Testnet Mode) so its preview matches what is sent.`
+                : wallet.status === 'connected'
+                  ? 'Signed in, but Phantom is not attached in this tab — reconnect to pay; this run is simulated.'
+                  : 'Not connected: payment is simulated. Connect Phantom (top right) to pay real devnet USDC.'}
+            </p>
 
             {error && (
               <div className="flex items-start gap-3 border-l-2 border-alarm px-4 py-2">
