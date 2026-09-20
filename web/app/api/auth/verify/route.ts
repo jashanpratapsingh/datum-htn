@@ -3,6 +3,7 @@ import { clearNonce, readNonce, setSession } from '@/lib/server/session';
 import { allowedDomains, verifySignIn } from '@/lib/server/siws-verify';
 import { touchAccount } from '@/lib/server/supabase';
 import { deriveRole } from '@/lib/server/role';
+import { openWalletSession } from '@/lib/server/wallet-user';
 import { isBase58Address } from '@/lib/wallet/siws';
 
 export const runtime = 'nodejs';
@@ -64,18 +65,20 @@ export async function POST(req: NextRequest) {
     deriveRole(address),
   ]);
 
-  const res = NextResponse.json(
-    {
-      ok: true,
-      wallet: address,
-      account,
-      role: owned.role,
-      devices: owned.devices,
-      ...(account ? {} : { warning: 'accounts_unavailable' as const }),
-    },
-    { status: 200, headers: { 'Cache-Control': 'no-store' } },
-  );
+  // Headers first: openWalletSession writes Supabase auth cookies onto this
+  // response, and the JSON body below reports whether it managed to.
+  const res = new NextResponse(null, { status: 200, headers: { 'Cache-Control': 'no-store', 'Content-Type': 'application/json' } });
+  const bridged = account ? await openWalletSession(address, req, res) : null;
   setSession(res, address);
   clearNonce(res);
-  return res;
+  const payload = {
+    ok: true,
+    wallet: address,
+    account,
+    userId: bridged?.userId ?? null,
+    role: owned.role,
+    devices: owned.devices,
+    ...(account && bridged ? {} : { warning: 'accounts_unavailable' as const }),
+  };
+  return new NextResponse(JSON.stringify(payload), { status: 200, headers: res.headers });
 }
