@@ -71,12 +71,40 @@ function combine<A, B>(
    Page-facing types. These are what components consume.
  * ------------------------------------------------------------------ */
 
+export interface MotionReading {
+  state: string;
+  score: number;
+  at: number;
+}
+
+/**
+ * Provenance of a device or a sale. `badge`: read off the conference badge's
+ * serial console by the relay. `esp32c3`: a VENDX node running
+ * firmware-vendor, serving x402 itself and registered with the relay.
+ * `simulator`: software. Mirrors SaleSource in relay-proxy/src/store/types.ts.
+ */
+export type Source = 'badge' | 'simulator' | 'esp32c3';
+
 export interface DeviceEntry {
   id: string;
   /** The relay (vendor) this device is sold through. */
   relay: RelayInfo;
-  source: 'badge' | 'simulator';
+  source: Source;
+  /** Registered nodes only: where an agent reaches the node directly. */
+  url?: string;
+  /** Registered nodes only: live / stale / lost by heartbeat age. */
+  nodeState?: 'live' | 'stale' | 'lost';
+  /** Registered nodes only: the relay confirmed the URL answers as this device. */
+  reachable?: boolean;
   chip?: string;
+  /** Presence-node (WiFi ESP32-C3) fields. Absent on the console badge and the simulator. */
+  motion?: MotionReading;
+  location?: string;
+  firmware?: string;
+  transport?: string;
+  rssiDbm?: number;
+  uptimeSeconds?: number;
+  sensing?: { enabled: boolean; ready: boolean; calibrating: boolean; threshold: number };
   deviceHash?: string;
   freeHeap?: number;
   largestBlock?: number;
@@ -106,7 +134,7 @@ export interface SaleEntry {
   signature: string;
   resource: string;
   description: string;
-  source: 'badge' | 'simulator' | 'esp32c3';
+  source: Source;
   /** Buyer wallet, when the relay verified the transfer on-chain. */
   payer?: string;
   /** True when the sale was tied to an account (agent key or web purchase). */
@@ -159,7 +187,7 @@ export interface LedgerEntry {
 
 interface WireDeviceSummary {
   id: string;
-  source: 'badge' | 'simulator';
+  source: Source;
   priceUsd: number;
   freeHeap: number | null;
   largestBlock: number | null;
@@ -167,13 +195,31 @@ interface WireDeviceSummary {
   lastSeen: number;
   totalSales: number;
   totalEarnedMicroUsdc: string;
+  motion?: MotionReading;
+  location?: string;
+  firmware?: string;
+  transport?: string;
+  /** Registered nodes only. */
+  url?: string;
+  nodeState?: 'live' | 'stale' | 'lost';
+  reachable?: boolean;
 }
 
 interface WireTelemetry {
   deviceId: string;
   timestamp: number;
-  source: 'badge' | 'simulator';
+  source: Source;
+  url?: string;
+  nodeState?: 'live' | 'stale' | 'lost';
+  reachable?: boolean;
   chip?: string;
+  motion?: MotionReading;
+  location?: string;
+  firmware?: string;
+  transport?: string;
+  rssiDbm?: number;
+  uptimeSeconds?: number;
+  sensing?: { enabled: boolean; ready: boolean; calibrating: boolean; threshold: number };
   deviceHash?: string;
   freeHeap?: number;
   largestBlock?: number;
@@ -191,7 +237,7 @@ interface WireSale {
   amountMicroUsdc: string;
   timestamp: number;
   txSignature: string;
-  source: 'badge' | 'simulator' | 'esp32c3';
+  source: Source;
   payer?: string;
   agentId?: string | null;
   userId?: string | null;
@@ -238,6 +284,9 @@ function summaryToEntry(relay: RelayInfo, d: WireDeviceSummary): DeviceEntry {
     id: d.id,
     relay,
     source: d.source,
+    url: d.url,
+    nodeState: d.nodeState,
+    reachable: d.reachable,
     chip: d.chip ?? undefined,
     freeHeap: d.freeHeap ?? undefined,
     largestBlock: d.largestBlock ?? undefined,
@@ -245,6 +294,10 @@ function summaryToEntry(relay: RelayInfo, d: WireDeviceSummary): DeviceEntry {
     earningsMicroUsdc: d.totalEarnedMicroUsdc,
     totalSales: d.totalSales,
     priceUsd: d.priceUsd,
+    motion: d.motion,
+    location: d.location,
+    firmware: d.firmware,
+    transport: d.transport,
   };
 }
 
@@ -271,6 +324,9 @@ async function fetchDeviceFrom(relay: RelayInfo, id: string): Promise<One<Device
       id: device.deviceId,
       relay,
       source: device.source,
+      url: device.url,
+      nodeState: device.nodeState,
+      reachable: device.reachable,
       chip: device.chip,
       deviceHash: device.deviceHash,
       freeHeap: device.freeHeap,
@@ -283,6 +339,13 @@ async function fetchDeviceFrom(relay: RelayInfo, id: string): Promise<One<Device
       fsBytes: device.fsBytes,
       lastSeen: device.timestamp,
       earningsMicroUsdc: earned.toString(),
+      motion: device.motion,
+      location: device.location,
+      firmware: device.firmware,
+      transport: device.transport,
+      rssiDbm: device.rssiDbm,
+      uptimeSeconds: device.uptimeSeconds,
+      sensing: device.sensing,
     },
   };
 }

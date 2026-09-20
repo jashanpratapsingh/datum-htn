@@ -8,7 +8,16 @@
  * Only the public half is ever read; the header is git-ignored because the key
  * is machine-specific, not because it is secret.
  *
- *   node scripts/gen-facilitator-key.mjs [--device-id vendx-esp32c3-6e94]
+ * The same header carries everything else that identifies ONE physical node:
+ *
+ *   --device-id vendx-esp32c3-6e94   VENDX_DEVICE_ID (mDNS name, payload `device`)
+ *   --pay-to <wallet owner>          VENDX_PAY_TO — the vendor wallet this node sells for.
+ *                                    Use the relay's: solana-keygen pubkey ~/.vendx/vendor-devnet.json
+ *   --relay-url http://host:3402     VENDX_RELAY_URL — compile-time default facilitator;
+ *                                    `relay <url>` over serial overrides it (NVS)
+ *
+ *   node scripts/gen-facilitator-key.mjs --device-id vendx-esp32c3-6e94 \
+ *     --pay-to "$(solana-keygen pubkey ~/.vendx/vendor-devnet.json)"
  */
 import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -20,8 +29,15 @@ const pub = keys.publicKey;
 if (!Array.isArray(pub) || pub.length !== 32) throw new Error('keys/facilitator.json: publicKey must be 32 bytes');
 
 const argv = process.argv.slice(2);
-const i = argv.indexOf('--device-id');
-const deviceId = i >= 0 ? argv[i + 1] : null;
+const flag = (name) => {
+  const i = argv.indexOf(name);
+  return i >= 0 && argv[i + 1] && !argv[i + 1].startsWith('--') ? argv[i + 1] : null;
+};
+const deviceId = flag('--device-id');
+const payTo = flag('--pay-to');
+const relayUrl = flag('--relay-url');
+if (payTo && !/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(payTo)) throw new Error(`--pay-to is not a base58 Solana address: ${payTo}`);
+if (relayUrl && !/^http:\/\/[^\s"]+$/.test(relayUrl)) throw new Error(`--relay-url must be a plain http:// URL (the node has no TLS): ${relayUrl}`);
 
 const rows = [];
 for (let r = 0; r < 32; r += 8) rows.push('    ' + pub.slice(r, r + 8).map((b) => '0x' + b.toString(16).padStart(2, '0')).join(', '));
@@ -33,8 +49,12 @@ const out = `#pragma once
   { \\
 ${rows.join(', \\\n')} \\
   }
-${deviceId ? `#define VENDX_DEVICE_ID "${deviceId}"\n` : ''}`;
+${deviceId ? `#define VENDX_DEVICE_ID "${deviceId}"\n` : ''}${payTo ? `// Vendor wallet owner this node sells for (the relay quotes the same one).\n#define VENDX_PAY_TO "${payTo}"\n` : ''}${relayUrl ? `#define VENDX_RELAY_URL "${relayUrl.replace(/\/+$/, '')}"\n` : ''}`;
 
 const dest = join(root, 'firmware-vendor/src/facilitator_key.h');
 writeFileSync(dest, out);
-console.log(`wrote ${dest} (pubkey ${Buffer.from(pub).toString('hex').slice(0, 16)}…${deviceId ? `, device id ${deviceId}` : ''})`);
+console.log(
+  `wrote ${dest} (pubkey ${Buffer.from(pub).toString('hex').slice(0, 16)}…` +
+    `${deviceId ? `, device id ${deviceId}` : ''}${payTo ? `, payTo ${payTo}` : ' — NO --pay-to: placeholder wallet compiled in'}` +
+    `${relayUrl ? `, relay ${relayUrl}` : ''})`,
+);

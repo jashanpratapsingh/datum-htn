@@ -10,12 +10,21 @@
  * VENDX_SETTLEMENT=trust skips the chain and signs whatever it is told. That is
  * the offline demo mode; the settle response then says `payer: "unverified"`.
  *
- * Either way the nonce must be one this relay issued, unused and unexpired, and
- * the receipt is signed over the payTo/amount that were *issued*, not the
- * client's copy. A transaction signature buys exactly one receipt: claiming the
- * signature and recording the sale are one write in the Store, so a receipt
- * can never exist without its sale row, and a retry of the same nonce+tx (a
- * buyer whose first response was dropped) gets the same receipt back.
+ * Either way the nonce must be one this relay can account for. Two cases:
+ *   - the relay issued it (simulator / badge path): it is in the Store, and the
+ *     receipt is signed over the payTo/amount that were *issued*;
+ *   - a registered node minted it (see node-registry.ts): the buyer names the
+ *     node (`deviceId`, from the challenge's `extra`), and the receipt is signed
+ *     over the node's *registered* payTo and price. The device verifies that
+ *     the nonce is one it minted; the relay verifies that the money moved.
+ * Never the client's copy of payTo or amount.
+ *
+ * A transaction signature buys exactly one receipt, and so does a nonce:
+ * claiming the signature and recording the sale (keyed by nonce) are one write
+ * in the Store, so a receipt can never exist without its sale row, a second
+ * receipt for the same node nonce is refused even with a fresh transaction,
+ * and a retry of the same nonce+tx (a buyer whose first response was dropped)
+ * gets the same receipt back.
  */
 
 import { Connection, clusterApiUrl, type ParsedInstruction, type ParsedTransactionWithMeta } from '@solana/web3.js';
@@ -30,6 +39,7 @@ import {
   type VendxNetwork,
 } from '@vendx/protocol';
 import { getKeys } from './keys.js';
+import { findNodeByPayTo, getNode, type NodeView } from './node-registry.js';
 import type { AgentRef, SaleSource, Store } from './store/types.js';
 
 export type SettlementMode = 'verify' | 'trust';
@@ -45,6 +55,8 @@ export interface SettleRequest {
   payTo: string;
   amount: string;
   network: string;
+  /** Which registered node minted the nonce (challenge `extra.deviceId`). Absent for relay-issued nonces. */
+  deviceId?: string;
 }
 
 /** Who gets credited for the sale, as the request presented it. */
@@ -54,6 +66,7 @@ export interface SettleContext {
   store: Store;
   sale: {
     relayId: string;
+    /** Provenance of the relay's own device. A registered node's nonce is recorded as `esp32c3` regardless. */
     source: SaleSource;
     /** Fallback when the issued nonce carries no device id. */
     deviceId?: string;
@@ -74,6 +87,8 @@ export interface SettleOk {
   idempotent?: boolean;
   /** Fee payer read from the confirmed transaction; 'unverified' in trust mode. */
   payer: string;
+  /** Set when the receipt was issued for a registered node's nonce. */
+  node?: { deviceId: string; url: string };
 }
 
 export interface SettleErr {
@@ -135,24 +150,55 @@ async function verifyOnChain(
   return { ok: true, payer };
 }
 
-export async function settle(req: SettleRequest, ctx: SettleContext): Promise<SettleOk | SettleErr> {
-  const { store } = ctx;
+/** A node-minted nonce: 32 lowercase hex chars (firmware-vendor/src/verifier.cpp, issueNonce). */
+const NODE_NONCE_RE = /^[0-9a-f]{32}$/;
+
+/** What the receipt is signed over: from the relay's Store, or from a node's registration. */
+interface Expectation {
+  payTo: string;
+  amountMicroUsdc: string;
+  /** Device the relay issued the nonce for (relay-issued nonces only). */
+  deviceId?: string;
+  node?: NodeView;
+}
+
+async function expectationFor(req: SettleRequest, store: Store): Promise<Expectation | SettleErr> {
   const issued = await store.peekNonce(req.nonce);
   const now = Math.floor(Date.now() / 1000);
-  if (!issued) return err('nonce_unknown');
-  if (issued.used) return err('nonce_replayed');
-  if (issued.expiresAt < now) return err('nonce_expired');
-  if (req.payTo && req.payTo !== issued.payTo) return err('wrong_recipient', 'payTo differs from the issued challenge');
-  if (req.amount && BigInt(req.amount) < BigInt(issued.amountMicroUsdc)) {
-    return err('insufficient_amount', 'amount below the issued challenge');
+  if (issued) {
+    if (issued.used) return err('nonce_replayed');
+    if (issued.expiresAt < now) return err('nonce_expired');
+    return { payTo: issued.payTo, amountMicroUsdc: issued.amountMicroUsdc, deviceId: issued.deviceId };
   }
 
-  const network = (req.network || 'solana-devnet') as VendxNetwork;
+  // Not ours. It can only be a registered node's — and only if the buyer can
+  // tell us which one (or the wallet maps to exactly one node).
+  const node = req.deviceId ? getNode(req.deviceId) : req.payTo ? findNodeByPayTo(req.payTo) : undefined;
+  if (!node) return err('nonce_unknown', req.deviceId ? `no registered node "${req.deviceId}"` : undefined);
+  if (!NODE_NONCE_RE.test(req.nonce)) return err('nonce_unknown', 'not a node-minted nonce');
+  if (node.nodeState === 'lost') return err('node_lost', `${node.deviceId} last heard from ${node.ageSeconds}s ago`);
+  if (req.network && req.network !== node.network) return err('wrong_network', `${node.deviceId} sells on ${node.network}`);
+  return { payTo: node.payTo, amountMicroUsdc: node.priceMicroUsdc, node };
+}
+
+export async function settle(req: SettleRequest, ctx: SettleContext): Promise<SettleOk | SettleErr> {
+  const { store } = ctx;
+  const now = Math.floor(Date.now() / 1000);
+  const expect = await expectationFor(req, store);
+  if ('success' in expect) return expect;
+  if (req.payTo && req.payTo !== expect.payTo) {
+    return err('wrong_recipient', expect.node ? "payTo differs from the node's registration" : 'payTo differs from the issued challenge');
+  }
+  if (req.amount && BigInt(req.amount) < BigInt(expect.amountMicroUsdc)) {
+    return err('insufficient_amount', expect.node ? "amount below the node's registered price" : 'amount below the issued challenge');
+  }
+
+  const network = (req.network || expect.node?.network || 'solana-devnet') as VendxNetwork;
   let payer = 'unverified';
   if (SETTLEMENT_MODE === 'verify') {
     const check = await verifyOnChain(req.txSignature, {
-      payTo: issued.payTo,
-      amountMicroUsdc: issued.amountMicroUsdc,
+      payTo: expect.payTo,
+      amountMicroUsdc: expect.amountMicroUsdc,
       network,
       nonce: req.nonce,
     });
@@ -164,8 +210,8 @@ export async function settle(req: SettleRequest, ctx: SettleContext): Promise<Se
   const body: ReceiptBody = {
     v: 1,
     nonce: req.nonce,
-    payTo: issued.payTo,
-    amount: issued.amountMicroUsdc,
+    payTo: expect.payTo,
+    amount: expect.amountMicroUsdc,
     signature: req.txSignature,
     network,
     issuedAt: now,
@@ -175,15 +221,16 @@ export async function settle(req: SettleRequest, ctx: SettleContext): Promise<Se
   // Signing is local and pure; the receipt only leaves this process once the
   // settlement is recorded.
   const receipt = encodeReceipt(signReceipt(body, secretKey));
+  const node = expect.node ? { deviceId: expect.node.deviceId, url: expect.node.url } : undefined;
 
   const recorded = await store.recordSettlement({
     id: req.nonce,
     nonce: req.nonce,
-    amountMicroUsdc: issued.amountMicroUsdc,
+    amountMicroUsdc: expect.amountMicroUsdc,
     timestamp: now,
     txSignature: req.txSignature,
-    source: ctx.sale.source,
-    deviceId: issued.deviceId || ctx.sale.deviceId,
+    source: expect.node ? 'esp32c3' : ctx.sale.source,
+    deviceId: expect.node?.deviceId ?? (expect.deviceId || ctx.sale.deviceId),
     relayId: ctx.sale.relayId,
     network,
     payer,
@@ -210,6 +257,7 @@ export async function settle(req: SettleRequest, ctx: SettleContext): Promise<Se
           attribution: ctx.attribution,
           payer,
           idempotent: true,
+          node,
         };
       }
       return err('signature_reused');
@@ -223,5 +271,6 @@ export async function settle(req: SettleRequest, ctx: SettleContext): Promise<Se
     settleHeader: encodeSettleHeader(settleResp),
     attribution: ctx.attribution,
     payer,
+    node,
   };
 }

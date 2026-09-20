@@ -1,13 +1,14 @@
 /**
- * VENDX — ESP32 data vending machine.
+ * VENDX node — an ESP32 that sells its own sensor data over x402.
  *
- * Sells BLE foot-traffic telemetry to AI agents over x402. See docs/PROTOCOL.md.
+ * The node mints 402 challenges, verifies relay-signed receipts offline and
+ * serves BLE foot-traffic telemetry to AI agents. See docs/PROTOCOL.md.
  *
  * Concurrency shape (this matters — see docs/ARCHITECTURE.md):
- *   The attached Hack the North badge is an ESP32-C3: a SINGLE-core RISC-V
- *   part at 160MHz. There is no second core to hide the BLE scan on, so the
- *   scan and the server are time-sliced on one core and the scan must be
- *   duty-cycled (window < interval) or it starves the WiFi stack.
+ *   The target is an ESP32-C3: a SINGLE-core RISC-V part at 160MHz. There is
+ *   no second core to hide the BLE scan on, so the scan and the server are
+ *   time-sliced on one core and the scan must be duty-cycled (window <
+ *   interval) or it starves the WiFi stack.
  * Verification is deliberately local and cheap (~40ms Ed25519, no TLS, no RPC),
  * so it can run in the request path without pausing the scan or spiking heap.
  *
@@ -18,9 +19,20 @@
  *     own WPA2 access point (`vendx-<mac4>`), so it is always reachable even on
  *     enterprise WiFi it cannot join. The HTTP server serves on both.
  *   - Once on a LAN it announces itself as <VENDX_DEVICE_ID>.local over mDNS.
+ *
+ * Registration:
+ *   The relay (facilitator) has to know this node exists to settle payments
+ *   for challenges the node minted itself. So on every station connect, and
+ *   every VENDX_REGISTER_SEC after, the node POSTs its identity — device id,
+ *   URL, payTo, price, network, heap — to <relay>/api/nodes/register. The
+ *   relay URL is provisioned like WiFi (`relay <url>` over serial, kept in NVS)
+ *   and is advertised to buyers in the challenge's `extra.facilitator`, so an
+ *   agent that finds the node knows where to settle. Plain HTTP: the relay is
+ *   on the same LAN, and the C3 has no heap for TLS with BLE up.
  */
 #include <Arduino.h>
 #include <WiFi.h>
+#include <HTTPClient.h>
 #include <ESPmDNS.h>
 #include <Preferences.h>
 #include <ESPAsyncWebServer.h>
@@ -42,11 +54,21 @@ static bool g_staAnnounced = false;
 static bool g_mdnsUp = false;
 static uint32_t g_staAttemptMs = 0;
 
+// ---------------------------------------------------------------- relay registration state
+static String g_relayUrl;
+static bool g_registerDue = false;
+static uint32_t g_lastRegisterMs = 0;
+static int g_lastRegisterCode = 0;      // HTTP status, or a negative HTTPClient error
+static uint32_t g_registerOk = 0;       // successful registrations since boot
+static const char kFirmware[] = "vendx-node " __DATE__ " " __TIME__;
+
 static void loadWifiCreds() {
   prefs.begin("vendx", /*readOnly=*/false);
   // isKey() first: getString() on a missing key logs an NVS error at boot.
   g_ssid = prefs.isKey("ssid") ? prefs.getString("ssid") : String(VENDX_WIFI_SSID);
   g_pass = prefs.isKey("pass") ? prefs.getString("pass") : String(VENDX_WIFI_PASS);
+  g_relayUrl = prefs.isKey("relay") ? prefs.getString("relay") : String(VENDX_RELAY_URL);
+  while (g_relayUrl.endsWith("/")) g_relayUrl.remove(g_relayUrl.length() - 1);
 }
 
 static void saveWifiCreds() {
@@ -95,6 +117,74 @@ static void printStatus() {
                 g_apUp ? (int)WiFi.softAPgetStationNum() : 0,
                 (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getMaxAllocHeap(),
                 (unsigned long)(millis() / 1000), (unsigned long)vendx::sensorCurrentBucket());
+  Serial.printf("[vendx] node id=%s payTo=%s price=%llu relay=%s registered=%s last_code=%d ok_count=%lu ago=%lus\n",
+                VENDX_DEVICE_ID, VENDX_PAY_TO, (unsigned long long)VENDX_PRICE_MICRO_USDC,
+                g_relayUrl.isEmpty() ? "(none)" : g_relayUrl.c_str(),
+                g_lastRegisterCode == 200 ? "yes" : "no", g_lastRegisterCode, (unsigned long)g_registerOk,
+                g_lastRegisterMs ? (unsigned long)((millis() - g_lastRegisterMs) / 1000) : 0UL);
+}
+
+// The URL an agent on the same network can reach this node at.
+static String selfUrl() {
+  if (WiFi.status() == WL_CONNECTED) return "http://" + WiFi.localIP().toString();
+  if (g_apUp) return "http://" + WiFi.softAPIP().toString();
+  return String();
+}
+
+/**
+ * Tell the relay who we are. Blocking (<= ~6 s worst case on a dead relay);
+ * runs from loop(), so the async HTTP server keeps serving and the only cost
+ * is a skipped BLE scan burst. Never runs in the request path.
+ */
+static void registerWithRelay(const char* why) {
+  g_registerDue = false;
+  g_lastRegisterMs = millis();
+  if (g_relayUrl.isEmpty()) {
+    Serial.println("[vendx] register: no relay url (serial: relay <url>)");
+    return;
+  }
+  const String me = selfUrl();
+  if (me.isEmpty()) return;
+
+  JsonDocument doc;
+  doc["deviceId"] = VENDX_DEVICE_ID;
+  doc["source"] = "esp32c3";
+  doc["chip"] = ESP.getChipModel();
+  doc["url"] = me;
+  doc["mdns"] = String(VENDX_DEVICE_ID) + ".local";
+  doc["resource"] = "/api/telemetry";
+  doc["payTo"] = VENDX_PAY_TO;
+  doc["priceMicroUsdc"] = String((unsigned long long)VENDX_PRICE_MICRO_USDC);
+  doc["network"] = VENDX_NETWORK;
+  doc["asset"] = VENDX_USDC_MINT;
+  doc["heartbeatSec"] = VENDX_REGISTER_SEC;
+  doc["freeHeap"] = ESP.getFreeHeap();
+  doc["largestBlock"] = ESP.getMaxAllocHeap();
+  doc["uptime"] = millis() / 1000;
+  doc["rssi"] = WiFi.status() == WL_CONNECTED ? WiFi.RSSI() : 0;
+  doc["bucket"] = vendx::sensorCurrentBucket();
+  doc["firmware"] = kFirmware;
+  doc["sdk"] = ESP.getSdkVersion();
+  String body;
+  serializeJson(doc, body);
+
+  HTTPClient http;
+  http.setConnectTimeout(3000);
+  http.setTimeout(3000);
+  if (!http.begin(g_relayUrl + "/api/nodes/register")) {
+    g_lastRegisterCode = -1;
+    Serial.printf("[vendx] register(%s): bad relay url \"%s\"\n", why, g_relayUrl.c_str());
+    return;
+  }
+  http.addHeader("Content-Type", "application/json");
+  const int code = http.POST(body);
+  String resp = code > 0 ? http.getString() : String(http.errorToString(code));
+  http.end();
+  g_lastRegisterCode = code;
+  if (code == 200) g_registerOk++;
+  resp.trim();
+  if (resp.length() > 160) resp = resp.substring(0, 160) + "…";
+  Serial.printf("[vendx] register(%s): %s -> %d %s\n", why, g_relayUrl.c_str(), code, resp.c_str());
 }
 
 static void doScan() {
@@ -141,8 +231,11 @@ static void handleLine(String line) {
     Serial.println("  wifi <ssid> [pass]   save station credentials to NVS and connect (quote an ssid with spaces)");
     Serial.println("  wifi clear           forget station credentials");
     Serial.println("  ap on|off            force the fallback access point");
+    Serial.println("  relay <url>          save the relay (facilitator) base url to NVS and register now");
+    Serial.println("  relay clear          forget the relay url (stops registration)");
+    Serial.println("  register             re-register with the relay now");
     Serial.println("  scan                 list nearby networks");
-    Serial.println("  status               link, ip, heap, uptime, current bucket");
+    Serial.println("  status               link, ip, heap, uptime, current bucket, relay registration");
     Serial.println("  reboot");
   } else if (a[0] == "status") {
     printStatus();
@@ -169,6 +262,25 @@ static void handleLine(String line) {
     if (n >= 2 && a[1] == "on") apBegin();
     else if (n >= 2 && a[1] == "off") apEnd();
     else Serial.println("usage: ap on|off");
+  } else if (a[0] == "relay") {
+    if (n >= 2 && a[1] == "clear") {
+      prefs.remove("relay");
+      g_relayUrl = "";
+      g_lastRegisterCode = 0;
+      Serial.println("[vendx] relay: cleared");
+    } else if (n >= 2 && a[1].startsWith("http://")) {
+      g_relayUrl = a[1];
+      while (g_relayUrl.endsWith("/")) g_relayUrl.remove(g_relayUrl.length() - 1);
+      prefs.putString("relay", g_relayUrl);
+      Serial.printf("[vendx] relay: saved %s\n", g_relayUrl.c_str());
+      registerWithRelay("console");
+    } else if (n >= 2) {
+      Serial.println("[vendx] relay: url must start with http:// (no TLS on this part)");
+    } else {
+      Serial.printf("[vendx] relay: %s\n", g_relayUrl.isEmpty() ? "(none)" : g_relayUrl.c_str());
+    }
+  } else if (a[0] == "register") {
+    registerWithRelay("console");
   } else if (a[0] == "reboot") {
     Serial.println("[vendx] rebooting");
     delay(100);
@@ -203,6 +315,7 @@ static void wifiTick() {
       g_mdnsUp = true;
       Serial.printf("[vendx] mdns: http://%s.local/\n", VENDX_DEVICE_ID);
     }
+    g_registerDue = true;
   }
   if (!up && g_staAnnounced) {
     g_staAnnounced = false;
@@ -210,6 +323,17 @@ static void wifiTick() {
     Serial.println("[vendx] wifi: station link lost, auto-reconnecting");
   }
   if (!up && !g_apUp && millis() - g_staAttemptMs > (uint32_t)VENDX_AP_FALLBACK_SEC * 1000UL) apBegin();
+}
+
+static void registerTick() {
+  if (g_relayUrl.isEmpty()) return;
+  // Only when something could be listening: a station link, or a client on
+  // our own AP (the relay may be the laptop joined to vendx-<mac4>).
+  const bool reachable = WiFi.status() == WL_CONNECTED || (g_apUp && WiFi.softAPgetStationNum() > 0);
+  if (!reachable) return;
+  const bool periodic = millis() - g_lastRegisterMs > (uint32_t)VENDX_REGISTER_SEC * 1000UL;
+  if (g_registerDue) registerWithRelay("connect");
+  else if (periodic) registerWithRelay("heartbeat");
 }
 
 // ---------------------------------------------------------------- HTTP
@@ -231,7 +355,13 @@ static void sendChallenge(AsyncWebServerRequest* req) {
   a["payTo"] = VENDX_PAY_TO;
   a["maxTimeoutSeconds"] = VENDX_NONCE_TTL_SEC;
   a["asset"] = VENDX_USDC_MINT;
-  a["extra"] = nullptr;
+  // `extra` is the x402 v1 escape hatch. We use it to tell the buyer which
+  // device minted this challenge and which facilitator can settle it — the
+  // node's nonce is unknown to the relay until the buyer names the node.
+  JsonObject extra = a["extra"].to<JsonObject>();
+  extra["deviceId"] = VENDX_DEVICE_ID;
+  extra["source"] = "esp32c3";
+  if (!g_relayUrl.isEmpty()) extra["facilitator"] = g_relayUrl;
   doc["nonce"] = nonce;
   doc["expiresAt"] = (uint32_t)(millis() / 1000) + VENDX_NONCE_TTL_SEC;
 
@@ -246,8 +376,8 @@ static void sendTelemetry(AsyncWebServerRequest* req, const vendx::Receipt& r) {
   JsonDocument doc;
   doc["device"] = VENDX_DEVICE_ID;
   doc["network"] = VENDX_NETWORK;
-  // Provenance: this is real hardware running the VENDX firmware — not the HTN
-  // badge's factory console and not the relay's simulator.
+  // Provenance: this is real hardware running the VENDX node firmware, not
+  // the relay's simulator and not a reading relayed off a serial console.
   doc["source"] = "esp32c3";
   // Honest framing: BLE MAC randomisation (~15 min rotation on modern phones)
   // makes absolute unique-device counts unreliable, so we sell a bucketed
@@ -295,8 +425,8 @@ void setup() {
   Serial.begin(115200);
   delay(200);
   Serial.println();
-  Serial.printf("[vendx] boot device=%s network=%s price=%llu\n", VENDX_DEVICE_ID, VENDX_NETWORK,
-                (unsigned long long)VENDX_PRICE_MICRO_USDC);
+  Serial.printf("[vendx] boot device=%s network=%s price=%llu payTo=%s fw=\"%s\"\n", VENDX_DEVICE_ID, VENDX_NETWORK,
+                (unsigned long long)VENDX_PRICE_MICRO_USDC, VENDX_PAY_TO, kFirmware);
 
   WiFi.mode(WIFI_STA);
   WiFi.setHostname(VENDX_DEVICE_ID);
@@ -308,6 +438,7 @@ void setup() {
     g_apSsid = buf;
   }
   loadWifiCreds();
+  Serial.printf("[vendx] relay: %s\n", g_relayUrl.isEmpty() ? "(none — serial: relay <url>)" : g_relayUrl.c_str());
   staBegin();
   if (g_ssid.isEmpty()) apBegin();
 
@@ -326,6 +457,12 @@ void setup() {
     d["sta"] = WiFi.status() == WL_CONNECTED;
     d["ip"] = WiFi.localIP().toString();
     d["ap"] = g_apUp;
+    d["payTo"] = VENDX_PAY_TO;
+    d["priceMicroUsdc"] = String((unsigned long long)VENDX_PRICE_MICRO_USDC);
+    d["network"] = VENDX_NETWORK;
+    d["relay"] = g_relayUrl.isEmpty() ? (const char*)nullptr : g_relayUrl.c_str();
+    d["registered"] = g_lastRegisterCode == 200;
+    d["firmware"] = kFirmware;
     String b; serializeJson(d, b);
     r->send(200, "application/json", b);
   });
@@ -350,5 +487,6 @@ void loop() {
   vendx::sensorTick();
   pollSerial();
   wifiTick();
+  registerTick();
   delay(50);
 }

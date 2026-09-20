@@ -284,20 +284,30 @@ account. Top the wallet up when `/agent` reports `buyer_unfunded`.
 
 ## Firmware
 
-Two ESP32-C3 badges exist. The user's **conference badge** keeps its factory
+Two ESP32-C3 boards exist. The user's **conference badge** keeps its factory
 firmware and is read over its serial console (`scripts/badge.py`) — never
-reflash it. A second, **disposable badge** (USB MAC `e8:f6:0a:26:6e:94`) runs
-`firmware-vendor/` since 2026-09-19; see "Vendor node" below. Both enumerate as
-`/dev/cu.usbmodem101`, so check which one is plugged in before doing anything:
-the vendor node prints `[vendx] boot device=vendx-esp32c3-6e94` on reset, the
-factory badge shows a `badge> ` prompt.
+reflash it. The second board (USB MAC `e8:f6:0a:26:6e:94`) is **our own VENDX
+node** `vendx-esp32c3-6e94`: it runs `firmware-vendor/` (reflashed 2026-09-20
+with the real vendor wallet compiled in) and is the only board that may ever be
+flashed; see "Vendor node" below. Both enumerate as `/dev/cu.usbmodem101`, so
+check which one is plugged in before doing anything: the node prints
+`[vendx] boot device=vendx-esp32c3-6e94` on reset, the factory badge shows a
+`badge> ` prompt. When in doubt, `esptool read-mac` (with the console stopped).
+
+Everything specific to one physical node — relay public key, device id, vendor
+wallet, optional default relay URL — lives in the generated, git-ignored
+`src/facilitator_key.h`:
 
 ```bash
 export PATH="$HOME/.nvm/versions/node/v22.23.2/bin:$PATH"
-node scripts/gen-facilitator-key.mjs --device-id vendx-esp32c3-6e94   # relay pubkey -> src/facilitator_key.h
+node scripts/gen-facilitator-key.mjs --device-id vendx-esp32c3-6e94 \
+  --pay-to "$(solana-keygen pubkey ~/.vendx/vendor-devnet.json)"   # same wallet the relay quotes
 cd firmware-vendor
 ../.venv-pio/bin/pio run -e esp32c3            # compile
 ```
+
+Without `--pay-to` the placeholder wallet is compiled in and the node sells
+into a void; the boot banner prints `payTo=` so you can check.
 
 `pio run -t upload` is broken on this machine (esptool 5.4 logger crash inside
 PlatformIO's uploader, *after* it has erased the bootloader). Flash with esptool
@@ -508,9 +518,10 @@ Note: the web `/agent` page still fabricates its signature client-side, so
 against a `verify` relay it stops at `/settle` with `payment_not_found`. Run the
 relay in `demo` mode for that page, or pay from the agent-buyer CLI.
 
-The disposable vendor node has `VENDX_PAY_TO` compiled in (`firmware-vendor/src/config.h`)
-and still quotes the placeholder address; rebuild and reflash **that badge only**
-with the real vendor wallet before selling through it.
+The VENDX node quotes the wallet compiled into it (`--pay-to` at build time);
+since 2026-09-20 that is the same vendor wallet the relay quotes. The relay
+signs node receipts over the node's **registered** wallet and price, so the
+two must agree or every buyer gets `wrong_recipient`.
 
 `up` and `demo` restart a running relay, so switching is one command. `up`
 stays honest about what it can read: with no badge plugged in it starts in real
@@ -551,11 +562,56 @@ moved and made a healthy tunnel look dead; if it reports a stale local record,
 flush with `sudo dscacheutil -flushcache; sudo killall -HUP mDNSResponder`.
 The public internet and Vercel are unaffected by that cache.
 
-## Vendor node (disposable badge running firmware-vendor)
+## Presence node (ESP32-C3 running the presence-node firmware, read over WiFi)
+
+A badge reflashed with the presence-node (ESPectre) build has no serial console,
+so `scripts/badge.py` cannot read it and the relay would fall back to the
+simulator even with the badge on USB. Instead the relay polls the node's own
+HTTP API over WiFi (TCP 62587, base path `/espectre/v1`, exact-Origin allowlist)
+and keeps one SSE connection open for `motion` events. The reading is sold via
+x402 like any other and stamped `"source": "esp32c3"` with `transport:
+"wifi-http"`, `firmware`, `readAt` and `ageSeconds`.
+
+```bash
+# ~/.vendx/relay.env — relay.sh loads it
+VENDX_PRESENCE_NODE=172.20.10.13          # host[:port]; port defaults to 62587
+VENDX_NODE_LOCATION="Hack the North"      # optional free text, shown as a plate on /devices
+# VENDX_PRESENCE_ORIGIN=https://test.espectre.dev   # the firmware's default allow-listed Origin
+```
+
+Precedence in `readBadge()`: conference badge console (source `badge`) →
+presence node (source `esp32c3`) → simulator. The device id is
+`<chip>-<last 6 of the node's device_id>`, e.g. `esp32c3-3d24a3`. Laptop and
+node must be on the same hotspot (see docs/BADGE.md); unplug the node from USB
+while the relay runs so the serial poller does not reset it every minute.
+
+## Vendor node (the VENDX ESP32-C3 running firmware-vendor)
 
 The node serves the x402 endpoint itself on port 80 (`GET /api/telemetry`,
 `GET /health`, `GET /`) and verifies relay receipts offline with the compiled-in
 facilitator public key. Provenance field: `"source": "esp32c3"`.
+
+**It must be registered with the relay before anyone can buy from it.** The
+node mints its own challenge nonces, and `/settle` only signs receipts for
+nonces it can account for: its own, or one from a node that has registered
+(`POST /api/nodes/register`, see docs/API.md). Registration happens from the
+node — give it the relay's URL over the serial console and it posts its
+identity on every station connect and every 60 s after (`status` shows
+`registered=yes`). The relay probes the node's `/health` at the URL it gave
+and lists it in `/api/devices` with `source: "esp32c3"`, `nodeState`
+(`live`/`stale`/`lost` by heartbeat age) and `reachable`. Plain HTTP only:
+the C3 has no heap for TLS with BLE up, so point it at the laptop's LAN IP,
+not at `https://relay.vendx.biz`.
+
+```bash
+./.venv-pio/bin/python scripts/vendor_console.py send 'relay http://<laptop-ip>:3402'   # save + register now
+./.venv-pio/bin/python scripts/vendor_console.py send register                          # re-register on demand
+./.venv-pio/bin/python scripts/vendor_console.py send 'relay clear'
+curl -s localhost:3402/api/nodes | jq .                                                 # what the relay knows
+```
+
+The node names its facilitator in every challenge (`accepts[0].extra.facilitator`,
+alongside `extra.deviceId`), so a buyer that finds the node knows where to settle.
 
 **WiFi** is provisioned at runtime — nothing is compiled in. If no station link
 is up 20 s after boot it opens its own WPA2 access point
@@ -577,12 +633,24 @@ the DTR/RTS toggle of a second `open()` resets the chip into download mode.
 `send` goes through a FIFO to the running `tail` for exactly this reason.
 
 End-to-end check over the network (402 → relay `/settle` → 200 → replay and
-tamper both rejected):
+tamper both rejected). The handshake script fabricates the transaction, so it
+needs a `demo` (trust) relay; against a `verify` relay step 2 correctly fails
+with `payment_not_found`. The real thing is `buy-node.mjs`: a genuine devnet
+USDC transfer, verified on-chain by the relay, redeemed on the node.
 
 ```bash
-scripts/vendor-handshake.sh http://192.168.4.1            # on the AP
+scripts/vendor-handshake.sh http://192.168.4.1                # on the AP, relay in demo mode
 scripts/vendor-handshake.sh http://vendx-esp32c3-6e94.local   # on a shared LAN
+node scripts/buy-node.mjs http://vendx-esp32c3-6e94.local     # real purchase, relay in verify mode
 ```
+
+Network reality on 2026-09-20: the venue LAN is WPA2-Enterprise, which the node
+cannot join, and the laptop's only uplink is its Wi-Fi. So either put both on a
+phone hotspot (`vendor_console.py wifi …`, then `relay http://<laptop-ip>:3402`),
+or uplink the laptop over iPhone USB and join its Wi-Fi to `vendx-6e94`
+(then the node registers with `relay http://192.168.4.2:3402` — the AP hands the
+laptop `.2`; check with `ifconfig en0`). Joining the laptop to the AP with no
+other uplink cuts every remote session on it.
 
 ### Stable hostname (named tunnel)
 

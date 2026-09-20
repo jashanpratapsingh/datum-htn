@@ -6,11 +6,14 @@
  * public key is public by definition (that is the point: the device holds only
  * a verifying key, never a signing key).
  *
- * Facilitator key: run `node scripts/gen-facilitator-key.mjs` from the repo
+ * Node identity: run `node scripts/gen-facilitator-key.mjs` from the repo
  * root. It reads keys/facilitator.json (the relay's keypair, git-ignored) and
  * writes firmware-vendor/src/facilitator_key.h (also git-ignored), which is
  * picked up below. Without it the placeholder zero key is compiled in and the
- * device rejects every receipt — the correct failure direction.
+ * device rejects every receipt — the correct failure direction. The same
+ * script takes --device-id, --pay-to (the vendor wallet this node sells for)
+ * and --relay-url (the facilitator it registers with), so everything that is
+ * specific to one physical node lives in that generated header, not here.
  *
  * WiFi: credentials are NOT compiled in. They are provisioned at runtime over
  * the USB serial console (`wifi <ssid> [pass]`) and persisted in NVS. If no
@@ -56,9 +59,26 @@
 #define VENDX_USDC_MINT "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"
 #endif
 
-/** Vendor wallet OWNER (not the associated token account). */
+/**
+ * Vendor wallet OWNER (not the associated token account). The value below is a
+ * placeholder nobody controls; the generated header sets the real one
+ * (`--pay-to`). A node quoting the placeholder is selling into a void.
+ */
 #ifndef VENDX_PAY_TO
 #define VENDX_PAY_TO "FHcgXc3YzNnq8WKcH8GaDvbKhJ4ycKxHnR7jzA8zAHU"
+#endif
+
+/**
+ * Relay (facilitator) the node registers with: POST <url>/api/nodes/register
+ * on every station connect and then every VENDX_REGISTER_SEC as a heartbeat.
+ * Empty disables registration. A URL saved over the serial console
+ * (`relay <url>`) takes precedence and survives reflashes.
+ */
+#ifndef VENDX_RELAY_URL
+#define VENDX_RELAY_URL ""
+#endif
+#ifndef VENDX_REGISTER_SEC
+#define VENDX_REGISTER_SEC 60
 #endif
 
 /** Price per read, in micro-USDC. Overridable from platformio.ini. */
@@ -76,7 +96,7 @@
  *
  * Deliberately shorter than the ~15 minute MAC-rotation interval of modern
  * phones: counting unique advertisers over a longer window over-reports badly.
- * See docs/BADGE.md.
+ * See docs/ARCHITECTURE.md.
  */
 #ifndef VENDX_BUCKET_SEC
 #define VENDX_BUCKET_SEC 300

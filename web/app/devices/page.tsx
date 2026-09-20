@@ -44,6 +44,7 @@ function DeviceRow({ device }: { device: DeviceEntry }) {
             <SourceBadge source={device.source} />
             <RelayTag relay={device.relay} />
             {device.chip && <span className="plate">{device.chip}</span>}
+            {device.location && <span className="plate">{device.location}</span>}
           </div>
           <p className="readout truncate text-sm text-ink group-hover:">{device.id}</p>
         </div>
@@ -65,12 +66,21 @@ function DeviceRow({ device }: { device: DeviceEntry }) {
           <dt className="plate mb-1">boots</dt>
           <dd className="readout text-sm text-ink/80">{device.bootCount ?? '—'}</dd>
         </div>
-        <div>
-          <dt className="plate mb-1">top reset</dt>
-          <dd className="readout text-sm text-ink/80">
-            {topReset ? `#${topReset[0]} ×${topReset[1]}` : '—'}
-          </dd>
-        </div>
+        {device.motion ? (
+          <div>
+            <dt className="plate mb-1">motion</dt>
+            <dd className="readout text-sm text-ink/80">
+              {device.motion.state} <span className="text-ink-muted">{device.motion.score.toFixed(2)}</span>
+            </dd>
+          </div>
+        ) : (
+          <div>
+            <dt className="plate mb-1">top reset</dt>
+            <dd className="readout text-sm text-ink/80">
+              {topReset ? `#${topReset[0]} ×${topReset[1]}` : '—'}
+            </dd>
+          </div>
+        )}
         <div>
           <dt className="plate mb-1">last seen</dt>
           <dd className="readout text-sm text-ink/80">
@@ -85,7 +95,9 @@ function DeviceRow({ device }: { device: DeviceEntry }) {
 const Legend = () => (
   <span className="flex items-center gap-3">
     <SourceBadge source="badge" />
-    <span className="normal-case tracking-normal">= real hardware</span>
+    <span className="normal-case tracking-normal">= badge via relay</span>
+    <SourceBadge source="esp32c3" />
+    <span className="normal-case tracking-normal">= ESP32-C3 node over WiFi</span>
     <SourceBadge source="simulator" />
     <span className="normal-case tracking-normal">= software mock</span>
   </span>
