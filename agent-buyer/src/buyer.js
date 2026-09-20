@@ -28,9 +28,11 @@ import { FAKE_PAYMENT, mockSolanaTxSig, payUsdc } from '../dist/wallet.js';
  */
 export async function buy({ baseUrl, spendLimitMicroUsdc = 10_000_000n }) {
   const resourceUrl = `${baseUrl}/api/telemetry`;
+  // Optional attribution: an API key minted on the website ties this purchase to an account.
+  const keyHeaders = process.env.VENDX_API_KEY ? { 'X-Vendx-Agent-Key': process.env.VENDX_API_KEY } : {};
 
   // 1. Initial request — expect 402.
-  const res1 = await fetch(resourceUrl);
+  const res1 = await fetch(resourceUrl, { headers: keyHeaders });
 
   if (res1.status !== 402) {
     if (res1.ok) return { telemetry: await res1.json(), paid: false };
@@ -82,7 +84,7 @@ export async function buy({ baseUrl, spendLimitMicroUsdc = 10_000_000n }) {
   // 5. Notify the facilitator and receive a signed receipt.
   const settleRes = await fetch(`${baseUrl}/settle`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...keyHeaders },
     body: JSON.stringify({
       nonce: challenge.nonce,
       txSignature: txSig,

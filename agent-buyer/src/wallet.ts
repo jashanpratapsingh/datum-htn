@@ -32,7 +32,7 @@ import {
   createTransferCheckedInstruction,
   getAssociatedTokenAddressSync,
 } from '@solana/spl-token';
-import { readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
@@ -41,8 +41,48 @@ import { USDC_DECIMALS, USDC_MINT_DEVNET, USDC_MINT_MAINNET, type VendxNetwork }
 /** SPL Memo program v2. */
 export const MEMO_PROGRAM_ID = new PublicKey('MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr');
 
+/** Where a keypair is created when neither VENDX_BUYER_KEYPAIR nor the Solana CLI key exists. */
+export const DEFAULT_GENERATED_KEYPAIR = join(homedir(), '.vendx', 'buyer-devnet.json');
+
+/**
+ * VENDX_BUYER_KEYPAIR wins; then the Solana CLI keypair if it exists; then a
+ * generated one at ~/.vendx/buyer-devnet.json (see ensureBuyerKeypair).
+ */
 export const BUYER_KEYPAIR_PATH =
-  process.env.VENDX_BUYER_KEYPAIR ?? join(homedir(), '.config', 'solana', 'id.json');
+  process.env.VENDX_BUYER_KEYPAIR ??
+  (existsSync(join(homedir(), '.config', 'solana', 'id.json'))
+    ? join(homedir(), '.config', 'solana', 'id.json')
+    : DEFAULT_GENERATED_KEYPAIR);
+
+/**
+ * Create the buyer keypair when it does not exist yet. Returns `created: true`
+ * so callers can print funding instructions: a fresh wallet holds nothing.
+ */
+export function ensureBuyerKeypair(): { path: string; created: boolean; publicKey: string } {
+  if (existsSync(BUYER_KEYPAIR_PATH)) {
+    return { path: BUYER_KEYPAIR_PATH, created: false, publicKey: loadBuyerKeypair().publicKey.toBase58() };
+  }
+  const kp = Keypair.generate();
+  mkdirSync(join(BUYER_KEYPAIR_PATH, '..'), { recursive: true });
+  writeFileSync(BUYER_KEYPAIR_PATH, JSON.stringify(Array.from(kp.secretKey)), { mode: 0o600 });
+  _keypair = kp;
+  return { path: BUYER_KEYPAIR_PATH, created: true, publicKey: kp.publicKey.toBase58() };
+}
+
+export function fundingHints(address?: string): string {
+  const addr = address ?? (existsSync(BUYER_KEYPAIR_PATH) ? loadBuyerKeypair().publicKey.toBase58() : '<address>');
+  return [
+    `Fund the buyer wallet ${addr} on Solana devnet:`,
+    `  SOL for fees:   solana airdrop 1 ${addr} --url devnet   (or https://faucet.solana.com)`,
+    `  devnet USDC:    https://faucet.circle.com  → Solana Devnet → ${addr}`,
+    `  (USDC mint ${USDC_MINT_DEVNET})`,
+  ].join('\n');
+}
+
+export function solscanUrl(signature: string, network: VendxNetwork): string {
+  const cluster = network === 'solana' ? '' : '?cluster=devnet';
+  return `https://solscan.io/tx/${signature}${cluster}`;
+}
 
 export function rpcUrl(network: VendxNetwork): string {
   return process.env.VENDX_SOLANA_RPC ?? clusterApiUrl(network === 'solana' ? 'mainnet-beta' : 'devnet');
@@ -83,6 +123,13 @@ export interface UsdcPayment {
   /** Buyer wallet address (base58). */
   payer: string;
   explorer: string;
+}
+
+/** Buyer's SOL balance in lamports. */
+export async function buyerSolBalance(network: VendxNetwork): Promise<bigint> {
+  const payer = loadBuyerKeypair();
+  const conn = new Connection(rpcUrl(network), 'confirmed');
+  return BigInt(await conn.getBalance(payer.publicKey, 'confirmed'));
 }
 
 /** Buyer's USDC balance in micro-USDC, or null when the ATA does not exist. */
