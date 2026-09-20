@@ -2,7 +2,7 @@
  * Settled payments printed like a till receipt: the paper surface. Shared by
  * /ledger and the account page so both print the same way.
  */
-import { usdc } from '@/lib/rent';
+import { formatUsdc } from '@/lib/usdc';
 
 export interface ReceiptLine {
   key: string;
@@ -64,7 +64,7 @@ export function SalesReceipt({ lines, title = 'settlement receipt', footer = 'th
               <div className="mt-1 flex justify-between gap-4 text-[11px] text-ink-muted">
                 <span>stored compressed · rent saved</span>
                 <span data-testid="receipt-saved" className="tabular-nums text-ink">
-                  {usdc(e.saved, { trim: false })}
+                  {formatUsdc(e.saved, 6)}
                 </span>
               </div>
             )}
@@ -80,7 +80,7 @@ export function SalesReceipt({ lines, title = 'settlement receipt', footer = 'th
         <div className="readout mt-2 flex justify-between text-[13px] text-ink">
           <span>RENT SAVED</span>
           <span data-testid="receipt-saved-total" className="tabular-nums">
-            {usdc(saved, { trim: false })} USDC
+            {formatUsdc(saved, 6)} USDC
           </span>
         </div>
       )}

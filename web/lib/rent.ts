@@ -108,18 +108,6 @@ export function summarizeSavings(records: SettledRecord[]): SavingsSummary {
   };
 }
 
-/**
- * USDC for people. Six decimals is what the receipt prints (micro-USDC is the
- * unit on the wire); `trim` drops trailing zeros for readouts, keeping at least
- * `min` places so 0.05 does not become 0.
- */
-export function usdc(n: number, { max = 6, min = 2, trim = true }: { max?: number; min?: number; trim?: boolean } = {}): string {
-  const [w, f = ''] = n.toFixed(max).split('.');
-  let frac = f;
-  if (trim) while (frac.length > min && frac.endsWith('0')) frac = frac.slice(0, -1);
-  return `${Number(w).toLocaleString('en-US')}.${frac}`;
-}
-
 /** 48 → "48×", 0.05 → "5%". Rent against revenue, in whichever unit reads. */
 export function ratio(r: number): string {
   if (r >= 2) return `${Math.round(r).toLocaleString('en-US')}×`;

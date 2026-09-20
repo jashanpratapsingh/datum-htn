@@ -15,9 +15,9 @@ import {
   STANDARD_RENT_QUOTED_USDC,
   ratio,
   summarizeSavings,
-  usdc,
   type SavingsSummary,
 } from '@/lib/rent';
+import { formatUsdc } from '@/lib/usdc';
 
 export const dynamic = 'force-dynamic';
 
@@ -36,25 +36,25 @@ function RentSaved({ s }: { s: SavingsSummary }) {
       <div className="grid grid-cols-1 md:grid-cols-[1.35fr_1fr_1fr]">
         <Readout
           label="kept by compressing"
-          value={<span data-testid="rent-saved-total">{usdc(s.saved)}</span>}
+          value={<span data-testid="rent-saved-total">{formatUsdc(s.saved)}</span>}
           unit="USDC"
           tone="amber"
           size="lg"
         />
         <div className="panel-divide md:panel-divide-x md:border-t-0">
-          <Readout label="standard Solana accounts" value={usdc(s.standard)} unit="USDC rent" tone="alarm" size="md" />
+          <Readout label="standard Solana accounts" value={formatUsdc(s.standard)} unit="USDC rent" tone="alarm" size="md" />
         </div>
         <div className="panel-divide md:panel-divide-x md:border-t-0">
-          <Readout label="ZK-compressed via Light Protocol" value={usdc(s.compressed)} unit="USDC rent" tone="ink" size="md" />
+          <Readout label="ZK-compressed via Light Protocol" value={formatUsdc(s.compressed)} unit="USDC rent" tone="ink" size="md" />
         </div>
       </div>
       <p className="panel-divide px-4 py-3.5 text-[15px] leading-relaxed text-ink/85">
         <span className="readout text-ink">{RENT_MULTIPLE}×</span> cheaper. Each reading sold for about{' '}
-        <span className="readout text-ink">{usdc(price)}</span> USDC. Holding it in a standard account would have cost{' '}
-        <span className="readout text-ink">{usdc(STANDARD_RENT_PER_RECORD)}</span> in rent, {ratio(s.standardOverRevenue)} the
-        sale; compressed it costs <span className="readout text-ink">{usdc(COMPRESSED_RENT_PER_RECORD)}</span>,{' '}
-        {ratio(s.compressedOverRevenue)}. At {quoted} records that is {usdc(STANDARD_RENT_QUOTED_USDC)} against{' '}
-        {usdc(COMPRESSED_RENT_QUOTED_USDC)} — the reason this project exists.
+        <span className="readout text-ink">{formatUsdc(price)}</span> USDC. Holding it in a standard account would have cost{' '}
+        <span className="readout text-ink">{formatUsdc(STANDARD_RENT_PER_RECORD)}</span> in rent, {ratio(s.standardOverRevenue)} the
+        sale; compressed it costs <span className="readout text-ink">{formatUsdc(COMPRESSED_RENT_PER_RECORD)}</span>,{' '}
+        {ratio(s.compressedOverRevenue)}. At {quoted} records that is {formatUsdc(STANDARD_RENT_QUOTED_USDC)} against{' '}
+        {formatUsdc(COMPRESSED_RENT_QUOTED_USDC)} — the reason this project exists.
       </p>
     </Panel>
   );
@@ -65,11 +65,11 @@ function RentArgument() {
   return (
     <Panel label="The rent argument" stamp={`${quoted} records · model`}>
       <div className="grid grid-cols-1 md:grid-cols-2">
-        <Readout label="standard Solana accounts" value={usdc(STANDARD_RENT_QUOTED_USDC)} unit="USDC rent" tone="alarm" size="lg" />
+        <Readout label="standard Solana accounts" value={formatUsdc(STANDARD_RENT_QUOTED_USDC)} unit="USDC rent" tone="alarm" size="lg" />
         <div className="panel-divide md:panel-divide-x md:border-t-0">
           <Readout
             label="ZK-compressed via Light Protocol"
-            value={usdc(COMPRESSED_RENT_QUOTED_USDC)}
+            value={formatUsdc(COMPRESSED_RENT_QUOTED_USDC)}
             unit="USDC rent"
             tone="amber"
             size="lg"

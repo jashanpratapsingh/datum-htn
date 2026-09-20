@@ -22,7 +22,8 @@
  */
 
 import { useEffect, useId, useRef, useState } from 'react';
-import { ratio, usdc, type SavingsPoint, type SavingsSummary } from '@/lib/rent';
+import { ratio, type SavingsPoint, type SavingsSummary } from '@/lib/rent';
+import { formatUsdc } from '@/lib/usdc';
 
 const MAX_ROWS = 12;
 
@@ -93,12 +94,12 @@ function Tip({ p, running, style }: { p: SavingsPoint; running: boolean; style: 
         <span>reading #{p.index}</span>
         <span>{clock(p.timestamp)}</span>
       </div>
-      <Row k="sold for" v={usdc(running ? p.cumRevenue : p.price)} />
-      <Row k="standard account rent" v={usdc(running ? p.cumStandard : p.standard)} swatch="alarm" />
-      <Row k="compressed rent" v={usdc(running ? p.cumCompressed : p.compressed)} swatch="hatch" />
+      <Row k="sold for" v={formatUsdc(running ? p.cumRevenue : p.price)} />
+      <Row k="standard account rent" v={formatUsdc(running ? p.cumStandard : p.standard)} swatch="alarm" />
+      <Row k="compressed rent" v={formatUsdc(running ? p.cumCompressed : p.compressed)} swatch="hatch" />
       <div className="mt-1.5 flex justify-between border-t border-dotted border-ink-muted/40 pt-1.5">
         <span>{running ? 'saved so far' : 'saved'}</span>
-        <span>{usdc(running ? p.cumSaved : p.saved)} USDC</span>
+        <span>{formatUsdc(running ? p.cumSaved : p.saved)} USDC</span>
       </div>
     </div>
   );
@@ -165,9 +166,9 @@ function PerReading({ s }: { s: SavingsSummary }) {
                 key={p.key}
                 tabIndex={0}
                 data-testid="rent-row"
-                aria-label={`Reading ${p.index} at ${clock(p.timestamp)}: sold for ${usdc(p.price)} USDC; a standard account would cost ${usdc(
+                aria-label={`Reading ${p.index} at ${clock(p.timestamp)}: sold for ${formatUsdc(p.price)} USDC; a standard account would cost ${formatUsdc(
                   p.standard,
-                )} of rent, compressed costs ${usdc(p.compressed)}; saved ${usdc(p.saved)}.`}
+                )} of rent, compressed costs ${formatUsdc(p.compressed)}; saved ${formatUsdc(p.saved)}.`}
                 className={`${COLS} rounded-[6px] py-2 outline-none transition-colors hover:bg-canvas/60 focus-visible:bg-canvas/60`}
                 onPointerEnter={(e) => show(p, e.currentTarget)}
                 onPointerLeave={() => setHover(null)}
@@ -193,7 +194,7 @@ function PerReading({ s }: { s: SavingsSummary }) {
                       style={{ width: `${stdW}%`, minWidth: 3 }}
                     >
                       {stdW > 30 && (
-                        <span className="readout text-[9px] leading-none text-pill">{usdc(p.standard)}</span>
+                        <span className="readout text-[9px] leading-none text-pill">{formatUsdc(p.standard)}</span>
                       )}
                     </div>
                   </div>
@@ -206,7 +207,7 @@ function PerReading({ s }: { s: SavingsSummary }) {
                       className="readout absolute top-1/2 -translate-y-1/2 whitespace-nowrap text-[10px] leading-none text-ink-muted"
                       style={{ left: `calc(max(${cmpW}%, 3px, ${saleX}% + 3px) + 6px)` }}
                     >
-                      {usdc(p.compressed)}
+                      {formatUsdc(p.compressed)}
                     </span>
                   </div>
                   {p.price > 0 && (
@@ -218,7 +219,7 @@ function PerReading({ s }: { s: SavingsSummary }) {
                 </div>
 
                 <span className="readout text-right text-[13px] leading-tight text-ink">
-                  <span className="block">{usdc(p.saved)}</span>
+                  <span className="block">{formatUsdc(p.saved)}</span>
                   <span className="block text-[11px] text-ink-muted">saved</span>
                 </span>
               </li>
@@ -394,8 +395,8 @@ function RunningTotal({ s }: { s: SavingsSummary }) {
           onBlur={() => setActive(null)}
         >
           <desc id={descId}>
-            After {n} settled reading{n === 1 ? '' : 's'}: standard accounts would owe {usdc(s.standard)} USDC of rent, the readings earned{' '}
-            {usdc(s.revenue)}, compressed storage cost {usdc(s.compressed)}. Saved {usdc(s.saved)}.
+            After {n} settled reading{n === 1 ? '' : 's'}: standard accounts would owe {formatUsdc(s.standard)} USDC of rent, the readings earned{' '}
+            {formatUsdc(s.revenue)}, compressed storage cost {formatUsdc(s.compressed)}. Saved {formatUsdc(s.saved)}.
           </desc>
 
           {grid.map((g) => (
@@ -438,7 +439,7 @@ function RunningTotal({ s }: { s: SavingsSummary }) {
                 )}
                 <circle cx={ex} cy={ey} r={4} fill={sr.color} stroke="var(--color-canvas-lift)" strokeWidth={2} />
                 <text x={ex + 18} y={ly + (narrow ? -2 : 3.5)} className="readout" fontSize={11} fill="var(--color-ink)">
-                  {usdc(sr.value(last))}
+                  {formatUsdc(sr.value(last))}
                   <tspan
                     fill="var(--color-ink-muted)"
                     x={narrow ? ex + 18 : undefined}
@@ -481,7 +482,7 @@ export default function RentSavingsCharts({ summary }: { summary: SavingsSummary
         <RunningTotal s={summary} />
       </div>
       <p className="panel-divide plate px-4 py-3 leading-relaxed lg:col-span-2">
-        Rent is charged per record, not per sale, so every reading saves the same {usdc(summary.points[0].saved)} USDC however
+        Rent is charged per record, not per sale, so every reading saves the same {formatUsdc(summary.points[0].saved)} USDC however
         little it sold for. Standard accounts would have cost {ratio(summary.standardOverRevenue)} what these readings earned;
         compressed storage cost {ratio(summary.compressedOverRevenue)}.
       </p>
