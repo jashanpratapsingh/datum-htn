@@ -12,6 +12,7 @@ import { getRelayIdentity } from './identity.js';
 import { AGENT_KEY_HEADER, WEB_AGENT_HEADER, WEB_SECRET_HEADER, WEB_USER_HEADER, resolveAgent, type AgentResolution } from './agent-auth.js';
 import { deviceState, getHeartbeatState, startHeartbeat } from './heartbeat.js';
 import { buildLedgerStatus } from './ledger.js';
+import { computeEarnings, notifySale, waitForEarningsChange, waitMsFromQuery } from './earnings.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = join(__dirname, '../../data');
@@ -227,6 +228,9 @@ export function createRelayServer(port = DEFAULT_PORT, opts: RelayServerOptions 
         return json(res, 402, result);
       }
 
+      // Wake the badge screens long-polling /api/earnings for this device.
+      if (!result.idempotent) notifySale(telemetry.deviceId);
+
       res.setHeader('X-Payment-Response', result.settleHeader);
       return json(res, 200, {
         receipt: result.receipt,
@@ -258,6 +262,25 @@ export function createRelayServer(port = DEFAULT_PORT, opts: RelayServerOptions 
             totalEarnedMicroUsdc: totalEarned.toString(),
           },
         ],
+      });
+    }
+
+    // GET /api/earnings — one device's lifetime earnings, painted on the badge
+    // screens. `device` defaults to the device agents buy from on this relay.
+    // With `wait=<sec>` (≤ 30) and `since=<micro>`, the response is held until
+    // the total differs from `since` or the wait elapses; always 200.
+    if (req.method === 'GET' && pathname === '/api/earnings') {
+      const telemetry = await readBadge();
+      const deviceId = url.searchParams.get('device') || telemetry.deviceId;
+      const waitMs = waitMsFromQuery(url.searchParams.get('wait'));
+      const since = url.searchParams.get('since');
+      const snap = waitMs > 0
+        ? await waitForEarningsChange(store, deviceId, since, waitMs)
+        : await computeEarnings(store, deviceId);
+      res.setHeader('Cache-Control', 'no-store');
+      return json(res, 200, {
+        ...snap,
+        source: deviceId === telemetry.deviceId ? telemetry.source : null,
       });
     }
 
