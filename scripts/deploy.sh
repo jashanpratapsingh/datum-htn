@@ -19,7 +19,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 STATE="$HOME/.vendx"
 ENV_FILE="${VENDX_WEB_ENV:-$STATE/web-mcp.env}"
 PROJECT_REF="dhjhsupqdmcdyqghxace"
-PROD_URL="${VENDX_PROD_URL:-https://web-rouge-six-46.vercel.app}"
+PROD_URL="${VENDX_PROD_URL:-https://vendx.biz}"
 
 REQUIRED=(
   SUPABASE_URL SUPABASE_SERVICE_KEY SESSION_SECRET

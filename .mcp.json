@@ -2,7 +2,7 @@
   "mcpServers": {
     "vendx": {
       "type": "http",
-      "url": "https://web-rouge-six-46.vercel.app/api/mcp"
+      "url": "https://vendx.biz/api/mcp"
     }
   }
 }
