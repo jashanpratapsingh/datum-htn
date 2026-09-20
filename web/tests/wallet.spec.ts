@@ -90,7 +90,8 @@ test('opening the menu floats it under the pill and leaves the navbar in place',
   // Balances arrive asynchronously and widen the pill; measure only once they are in.
   await expect(pill.locator('[data-wallet="usdc"]')).toBeVisible({ timeout: 15_000 });
   const brand = page.getByRole('link', { name: /vendx home/i });
-  const contact = page.getByRole('link', { name: /get in touch/i });
+  // "Get in touch" exists only without Supabase, and a connected wallet hides "Sign in"; the Account nav link is always there.
+  const contact = page.getByRole('navigation', { name: /primary/i }).getByRole('link', { name: /^account$/i });
   const vertical = (b: { y: number; height: number } | null) => (b ? { y: b.y, height: b.height } : null);
   const before = {
     brand: vertical(await brand.boundingBox()),
@@ -144,6 +145,53 @@ test('a different account in Phantom logs the site out', async ({ page }) => {
   });
   await expect(page.locator('[data-wallet="connect"]').first()).toBeVisible();
   expect(await (await page.request.get('/api/auth/session')).json()).toMatchObject({ authenticated: false });
+});
+
+test('connecting Phantom on the agent console is a sign-in: the run button appears without a reload', async ({ page }) => {
+  const { address } = await installMockPhantom(page);
+  await page.goto('/agent', { waitUntil: 'networkidle' });
+
+  // Two doors, neither taken yet.
+  const connect = page.locator('[data-agent="connect-wallet"]');
+  await expect(connect).toHaveText(/connect phantom to run/i);
+  await expect(page.getByRole('button', { name: /run handshake/i })).toHaveCount(0);
+
+  await connect.click();
+  // The verify response set the cookies; the provider refreshes the server
+  // components, so the console flips to ready on this same page.
+  await expect(page.getByRole('button', { name: /run handshake/i })).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText(new RegExp(`as ${address.slice(0, 4)}…${address.slice(-4)}`))).toBeVisible();
+  await expect(connect).toHaveCount(0);
+  // The nav offers no second "Sign in": the connected pill is the login.
+  await expect(page.locator('header').getByRole('link', { name: /^sign in$/i })).toHaveCount(0);
+
+  // The wallet session counts everywhere the email one does.
+  await page.goto('/login?next=%2Fagent');
+  await expect(page).toHaveURL(/\/agent$/);
+  await page.goto('/account', { waitUntil: 'networkidle' });
+  await expect(page.locator('h1').first()).toHaveText(/Account/i);
+  await expect(page.getByText(`${address.slice(0, 4)}…${address.slice(-4)}`).first()).toBeVisible();
+
+  // With Supabase configured the wallet login also holds a Supabase session
+  // (sb-* cookies). Drop only those, as an expired one would: proxy.ts must
+  // re-open it from the wallet cookie on the next request, so /account still
+  // knows the wallet and the sb-* cookies are back.
+  const sbCookies = (await page.context().cookies()).filter((c) => c.name.startsWith('sb-'));
+  if (sbCookies.length > 0) {
+    await page.context().clearCookies({ name: /^sb-/ });
+    await page.goto('/account', { waitUntil: 'networkidle' });
+    await expect(page.locator('h1').first()).toHaveText(/Account/i);
+    await expect(page.getByText(`${address.slice(0, 4)}…${address.slice(-4)}`).first()).toBeVisible();
+    const restored = (await page.context().cookies()).filter((c) => c.name.startsWith('sb-'));
+    expect(restored.length, 'proxy re-opened the Supabase session from the wallet cookie').toBeGreaterThan(0);
+  }
+
+  // Disconnecting takes the console back to its two doors, again without a reload.
+  await page.goto('/agent', { waitUntil: 'networkidle' });
+  await page.locator('[data-wallet="connected"]').first().click();
+  await page.locator('[data-wallet="disconnect"]').click();
+  await expect(page.locator('[data-agent="connect-wallet"]')).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole('button', { name: /run handshake/i })).toHaveCount(0);
 });
 
 test('tampered signature is refused by /api/auth/verify', async ({ page }) => {

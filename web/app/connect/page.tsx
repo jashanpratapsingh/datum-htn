@@ -5,7 +5,7 @@ import { Pill } from '@/components/Pill';
 import InstallSnippets from '@/components/connect/InstallSnippets';
 import { oauthSnippets, mcpUrl } from '@/lib/connect/snippets';
 import { originFromHeaders } from '@/lib/oauth/origin';
-import { getSessionUser } from '@/lib/supabase/server';
+import { getViewer } from '@/lib/auth/viewer';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,7 +20,7 @@ const TOOLS: Array<[string, string]> = [
 /** The public "plug your coding agent in" page: one command per client. */
 export default async function ConnectPage() {
   const origin = originFromHeaders(await headers());
-  const user = await getSessionUser();
+  const user = await getViewer();
   return (
     <PageShell
       title="Connect your coding agent"

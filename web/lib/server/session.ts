@@ -83,9 +83,14 @@ const cookieOpts = (maxAge: number) => ({
   maxAge,
 });
 
-export function readSession(req: NextRequest): SessionClaims | null {
-  const claims = verifyToken<SessionClaims>(req.cookies.get(SESSION_COOKIE)?.value);
+/** The wallet session behind a raw vendx_session cookie value, or null. */
+export function sessionFromCookie(value: string | undefined): SessionClaims | null {
+  const claims = verifyToken<SessionClaims>(value);
   return claims && claims.v === 1 && typeof claims.w === 'string' ? claims : null;
+}
+
+export function readSession(req: NextRequest): SessionClaims | null {
+  return sessionFromCookie(req.cookies.get(SESSION_COOKIE)?.value);
 }
 
 export function setSession(res: NextResponse, wallet: string): SessionClaims {

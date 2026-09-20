@@ -24,6 +24,7 @@ import {
   useState,
   type ReactNode,
 } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   bytesToB64u,
   getPhantom,
@@ -107,6 +108,7 @@ async function postJson<T>(url: string, body: unknown): Promise<{ status: number
 
 export function WalletProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<WalletState>(initial);
+  const router = useRouter();
   const providerRef = useRef<PhantomProvider | null>(null);
   const walletRef = useRef<string | null>(null);
   const backoffRef = useRef(0);
@@ -126,7 +128,10 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       account: null,
       providerReady: false,
     });
-  }, [patch]);
+    // Server components (agent console, account, login redirect) read the
+    // session from cookies: re-render them now that the cookies are gone.
+    router.refresh();
+  }, [patch, router]);
 
   const refreshBalances = useCallback(async () => {
     const wallet = walletRef.current;
@@ -216,13 +221,16 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         error: null,
       });
       void refreshBalances();
+      // The verify response set the session cookies; let every server
+      // component on the page see the signed-in viewer without a reload.
+      router.refresh();
     } catch (e) {
       patch({
         status: 'disconnected',
         error: isUserRejection(e) ? 'Cancelled in Phantom' : e instanceof Error ? e.message : String(e),
       });
     }
-  }, [patch, refreshBalances]);
+  }, [patch, refreshBalances, router]);
 
   const disconnect = useCallback(async () => {
     const p = providerRef.current;
