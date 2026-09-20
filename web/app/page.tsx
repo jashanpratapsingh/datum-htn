@@ -11,7 +11,7 @@ import VendorMap from '@/components/VendorMap';
 */
 export default function Home() {
   return (
-    <main className="min-h-screen bg-glass">
+    <main className="min-h-screen bg-canvas">
       <NavBar />
       <HeroSection />
       <div className="mx-auto max-w-6xl px-5 pb-24 sm:px-8 md:px-12">

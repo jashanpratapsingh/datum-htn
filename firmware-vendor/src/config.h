@@ -4,19 +4,43 @@
  *
  * Nothing secret belongs in this file — it is committed. The facilitator
  * public key is public by definition (that is the point: the device holds only
- * a verifying key, never a signing key). WiFi credentials come from build
- * flags so they stay out of git:
+ * a verifying key, never a signing key).
  *
- *   pio run -e esp32c3 \
- *     --build-flag '-DVENDX_WIFI_SSID="\"my-ssid\""' \
- *     --build-flag '-DVENDX_WIFI_PASS="\"my-pass\""'
+ * Facilitator key: run `node scripts/gen-facilitator-key.mjs` from the repo
+ * root. It reads keys/facilitator.json (the relay's keypair, git-ignored) and
+ * writes firmware-vendor/src/facilitator_key.h (also git-ignored), which is
+ * picked up below. Without it the placeholder zero key is compiled in and the
+ * device rejects every receipt — the correct failure direction.
+ *
+ * WiFi: credentials are NOT compiled in. They are provisioned at runtime over
+ * the USB serial console (`wifi <ssid> [pass]`) and persisted in NVS. If no
+ * station connection is up after VENDX_AP_FALLBACK_SEC the node also opens its
+ * own access point (`vendx-<mac4>` / VENDX_AP_PASS) so it is always reachable.
+ * Compile-time defaults can still be set via the PLATFORMIO_BUILD_FLAGS env var:
+ *
+ *   PLATFORMIO_BUILD_FLAGS='-DVENDX_WIFI_SSID=\"my-ssid\" -DVENDX_WIFI_PASS=\"my-pass\"' \
+ *     pio run -e esp32c3
  */
 
+#if __has_include("facilitator_key.h")
+#include "facilitator_key.h"
+#endif
+
+/** Default station credentials; NVS values set over serial take precedence. */
 #ifndef VENDX_WIFI_SSID
-#define VENDX_WIFI_SSID "vendx-setup"
+#define VENDX_WIFI_SSID ""
 #endif
 #ifndef VENDX_WIFI_PASS
 #define VENDX_WIFI_PASS ""
+#endif
+
+/** Fallback access point. Password must be >= 8 chars for WPA2. */
+#ifndef VENDX_AP_PASS
+#define VENDX_AP_PASS "vendx-setup"
+#endif
+/** Seconds without a station link before the AP comes up. 0 disables the AP. */
+#ifndef VENDX_AP_FALLBACK_SEC
+#define VENDX_AP_FALLBACK_SEC 20
 #endif
 
 #ifndef VENDX_DEVICE_ID
@@ -61,8 +85,8 @@
 /**
  * Facilitator Ed25519 public key, 32 raw bytes.
  *
- * Replace with your relay's key: `node relay-proxy/dist/keys.js --print-c`.
- * The placeholder below verifies nothing real — a device flashed with it will
+ * Normally provided by the generated facilitator_key.h (see above). The
+ * placeholder below verifies nothing real — a device flashed with it will
  * reject every receipt, which is the correct failure direction.
  */
 #ifndef VENDX_FACILITATOR_PUBKEY_INIT

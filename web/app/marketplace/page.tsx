@@ -2,6 +2,7 @@ import PageShell from '@/components/PageShell';
 import { Panel, Readout } from '@/components/Panel';
 import { SourceBadge } from '@/components/SourceBadge';
 import { RelayOffline } from '@/components/RelayOffline';
+import { RelayTag, RelayDark } from '@/components/RelayTag';
 import { fetchSales } from '@/lib/relay';
 import type { SaleEntry } from '@/lib/relay';
 
@@ -12,15 +13,16 @@ function SaleRow({ sale }: { sale: SaleEntry }) {
     <li className="panel-divide flex flex-wrap items-center gap-x-6 gap-y-2 px-4 py-3">
       <div className="flex min-w-0 flex-1 items-center gap-3">
         <SourceBadge source={sale.source} />
+        <RelayTag relay={sale.relay} />
         <div className="min-w-0">
-          <p className="readout truncate text-xs text-phosphor">{sale.deviceId}</p>
-          <p className="readout truncate text-[11px] text-phosphor-dim" title={sale.signature}>
+          <p className="readout truncate text-xs text-ink">{sale.deviceId}</p>
+          <p className="readout truncate text-[11px] text-ink-muted" title={sale.signature}>
             {sale.description} · {sale.signature.slice(0, 14)}…
           </p>
         </div>
       </div>
-      <div className="readout text-right text-sm text-amber">{usd(sale.amount)}</div>
-      <div className="readout w-20 text-right text-xs text-phosphor-dim">
+      <div className="readout text-right text-sm text-ink">{usd(sale.amount)}</div>
+      <div className="readout w-20 text-right text-xs text-ink-muted">
         {new Date(sale.timestamp * 1000).toLocaleTimeString()}
       </div>
     </li>
@@ -35,15 +37,20 @@ export default async function MarketplacePage() {
   return (
     <PageShell
       title="Data marketplace"
-      subtitle="Every reading sold, from every device. Simulator sales are stamped and never mixed in with hardware."
-      stamp={result.ok ? `${n} sale${n === 1 ? '' : 's'}` : 'no link'}
+      subtitle="Every reading sold, from every device and every relay. Simulator sales are stamped and never mixed in with hardware."
+      stamp={result.ok ? `${n} sale${n === 1 ? '' : 's'}${result.failed.length ? ` · ${result.failed.length} relay dark` : ''}` : 'no link'}
     >
+      {result.ok && result.failed.length > 0 && (
+        <Panel label="Relays" className="mb-5">
+          {result.failed.map((f) => <RelayDark key={f.relay.key} relay={f.relay} message={f.message} />)}
+        </Panel>
+      )}
       {!result.ok ? (
         <RelayOffline path="/api/sales" reason={result.reason} />
       ) : n === 0 ? (
         <Panel label="Sales">
-          <p className="readout px-4 py-12 text-center text-sm text-phosphor-dim">
-            Nothing sold yet. Run <span className="text-phosphor">npm run demo</span> to make a sale.
+          <p className="readout px-4 py-12 text-center text-sm text-ink-muted">
+            Nothing sold yet. Run <span className="text-ink">npm run demo</span> to make a sale.
           </p>
         </Panel>
       ) : (
@@ -56,7 +63,7 @@ export default async function MarketplacePage() {
             </div>
           </Panel>
           <Panel label="Sales" stamp="newest first">
-            <ul>{result.data.map((s) => <SaleRow key={s.id} sale={s} />)}</ul>
+            <ul>{result.data.map((s) => <SaleRow key={`${s.relay.key}:${s.id}`} sale={s} />)}</ul>
           </Panel>
         </div>
       )}

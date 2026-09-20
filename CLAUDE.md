@@ -134,25 +134,37 @@ for font pairings, a11y rules and GSAP presets — not as a style oracle.
 ## Commits
 
 Conventional commits (`feat:`, `fix:`, `docs:`, `chore:`, `refactor:`). Work
-happens on `feat/vendx-architecture-gamma`, never directly on `main`.
+happens on short-lived feature branches merged into `main` through a PR, never
+directly on `main`; delete the branch after the merge.
 
 ## Honesty about what runs
 
-A real **Hack the North ESP32-C3 badge** is attached at `/dev/cu.usbmodem101`.
-`relay-proxy` reads genuine telemetry from it over the serial console, so the
-demo returns `source: "badge"` when it is plugged in and `source: "simulator"`
-when it is not. Every payload carries that field — always surface it, and never
-present a simulated reading as hardware.
+Two **Hack the North ESP32-C3 badges** exist and both enumerate as
+`/dev/cu.usbmodem101` — check which one is plugged in before touching it.
+
+- The user's **conference badge** keeps its factory firmware. `relay-proxy`
+  reads genuine telemetry from it over the serial console (`scripts/badge.py`),
+  so the demo returns `source: "badge"` when it is plugged in and
+  `source: "simulator"` when it is not.
+- A **disposable badge** (USB MAC `e8:f6:0a:26:6e:94`) was reflashed on
+  2026-09-19 with `firmware-vendor/` at the user's request. It serves x402 over
+  WiFi itself (`source: "esp32c3"`); see RUNBOOK "Vendor node". Its factory
+  image is backed up in `~/.vendx/badge-backups/`. Talk to it only through
+  `scripts/vendor_console.py` (one port owner, or the chip resets).
+
+Every payload carries `source` — always surface it, and never present a
+simulated reading as hardware.
 
 Read `docs/BADGE.md` before touching the badge. Two hard rules:
 
-- **Never reflash or erase it.** No `write_flash`, no `erase_flash`, no
-  `pio run -t upload` against it. Read-only probing only; it is the user's
-  conference badge and the factory firmware must survive.
+- **Never reflash or erase the conference badge.** No `write_flash`, no
+  `erase_flash`, no `pio run -t upload` against it. Read-only probing only; it
+  is the user's conference badge and the factory firmware must survive. The
+  disposable badge (MAC above) is the only device that may be flashed.
 - **Never read `identity.json` or `solana.json` into anything.** They hold
   personal contact details and a plaintext Solana private key. They are not
   telemetry, they are not test fixtures, and they never get committed.
 
-`firmware-vendor/` is our own ESP32 firmware and is compile-only — it is not
-what runs on the badge. Never report a deploy, a test pass or an on-chain
-settlement that did not actually happen.
+`firmware-vendor/` is our own ESP32 firmware. It runs on the disposable badge
+only — never on the conference badge. Never report a deploy, a test pass or an
+on-chain settlement that did not actually happen.

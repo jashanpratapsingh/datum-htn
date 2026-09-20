@@ -17,11 +17,12 @@ export function Panel({
   label?: string;
   stamp?: React.ReactNode;
   className?: string;
-  /** Live readouts get scanlines; static ones do not. */
+  /** Kept for call sites; a live panel no longer draws differently. */
   live?: boolean;
 }) {
+  void live;
   return (
-    <section className={`panel ${live ? 'scanlines' : ''} ${className}`}>
+    <section className={`panel ${className}`}>
       {(label || stamp) && (
         <header className="flex items-center justify-between border-b border-rule px-4 py-2.5">
           {label && <span className="plate">{label}</span>}
@@ -38,21 +39,21 @@ export function Readout({
   label,
   value,
   unit,
-  tone = 'phosphor',
+  tone = 'ink',
   size = 'md',
 }: {
   label: string;
   value: React.ReactNode;
   unit?: string;
-  /** `amber` is reserved for money. Nothing else may use it. */
-  tone?: 'phosphor' | 'amber' | 'alarm' | 'dim';
+  /** `amber` marks money. Same ink, one weight up, so a price still leads. */
+  tone?: 'ink' | 'amber' | 'alarm' | 'dim';
   size?: 'sm' | 'md' | 'lg';
 }) {
   const toneClass = {
-    phosphor: 'text-phosphor',
-    amber: 'text-amber bloom-amber',
+    ink: 'text-ink',
+    amber: 'text-ink font-medium',
     alarm: 'text-alarm',
-    dim: 'text-phosphor-dim',
+    dim: 'text-ink-muted',
   }[tone];
 
   const sizeClass = { sm: 'text-base', md: 'text-2xl', lg: 'text-4xl md:text-5xl' }[size];
@@ -62,7 +63,7 @@ export function Readout({
       <div className="plate mb-1.5">{label}</div>
       <div className={`readout leading-none ${sizeClass} ${toneClass}`}>
         {value}
-        {unit && <span className="ml-1.5 text-[0.42em] text-phosphor-dim">{unit}</span>}
+        {unit && <span className="ml-1.5 text-[0.42em] text-ink-muted">{unit}</span>}
       </div>
     </div>
   );

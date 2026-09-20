@@ -35,7 +35,7 @@ function PanelSkeleton({ rows = 3 }: { rows?: number }) {
 
 export default function PageSkeleton({ panels = [3] }: { panels?: number[] }) {
   return (
-    <main className="min-h-screen bg-glass" aria-busy="true" aria-label="Loading">
+    <main className="min-h-screen bg-canvas" aria-busy="true" aria-label="Loading">
       <NavBar />
       <div className="mx-auto max-w-6xl px-5 pb-24 pt-28 sm:px-8 md:px-12">
         <div className="mb-10 flex items-start justify-between border-b border-rule pb-5">
