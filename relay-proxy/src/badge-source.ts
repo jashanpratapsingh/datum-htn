@@ -22,12 +22,28 @@ import { execFile } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { promisify } from 'node:util';
 import { makeTelemetry } from './simulator.js';
+import { readPresenceNode } from './presence-source.js';
 
 const exec = promisify(execFile);
 
 const PY = process.env.VENDX_PY ?? '.venv-pio/bin/python';
 const SCRIPT = process.env.VENDX_BADGE_SCRIPT ?? 'scripts/badge.py';
-const PORT = process.env.VENDX_BADGE_PORT ?? '/dev/cu.usbmodem101';
+
+/**
+ * Serial path for the HTN badge.
+ *
+ * macOS factory default is `/dev/cu.usbmodem101`. On Windows the OS assigns a
+ * COM port (often COM3–COM7 for ESP32 boards); set `VENDX_BADGE_PORT` explicitly
+ * when the default is wrong. Without a platform-aware default, Windows operators
+ * stay stuck in simulator mode forever.
+ */
+export function defaultBadgePort(): string {
+  if (process.env.VENDX_BADGE_PORT) return process.env.VENDX_BADGE_PORT;
+  if (process.platform === 'win32') return 'COM3';
+  return '/dev/cu.usbmodem101';
+}
+
+const PORT = defaultBadgePort();
 /** The serial device the poller watches; exported for the startup log. */
 export const BADGE_PORT = PORT;
 
@@ -41,7 +57,8 @@ const DEAD_BACKOFF_MS = 60_000;
 export interface BadgeTelemetry {
   deviceId: string;
   timestamp: number;
-  source: 'badge' | 'simulator';
+  /** `badge` = conference badge over serial; `esp32c3` = an ESP32-C3 node over its own network face. */
+  source: 'badge' | 'simulator' | 'esp32c3';
   chip?: string;
   /** SHA-256 prefix of the BLE MAC. The raw MAC is never published. */
   deviceHash?: string;
@@ -146,6 +163,10 @@ export async function readBadge(): Promise<BadgeTelemetry> {
     const dead = lastFailureAt > 0 && Date.now() - lastFailureAt < DEAD_BACKOFF_MS;
     return { ...lastGood, timestamp: now, ageSeconds: age, badgeState: dead ? 'unresponsive' : 'ok' };
   }
+
+  // No console reading: a presence-node badge on WiFi is the next real thing.
+  const node = readPresenceNode();
+  if (node) return node;
 
   const sim = { ...(makeTelemetry() as unknown as BadgeTelemetry), source: 'simulator' as const };
   return badgeAttached()

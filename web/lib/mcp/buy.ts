@@ -56,7 +56,7 @@ export interface DeviceListing {
 
 /** What a device sells, in the buyer's words. */
 function metricOf(d: DirectoryDevice): string {
-  if (d.source === 'esp32c3') return 'ble_advertisers_per_5min (nearby BLE devices = foot traffic)';
+  if (d.source === 'esp32c3') return 'live ESP32-C3 node over WiFi: motion state + score (WiFi CSI presence sensing) or ble_advertisers_per_5min, per node firmware — read `source` and the fields returned';
   if (d.source === 'simulator') return 'footTraffic + temperature (simulated 5-minute bucket)';
   return 'badge health (heap, BLE state, resets)';
 }

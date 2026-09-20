@@ -8,6 +8,8 @@
     "build": "tsc -p tsconfig.json && chmod +x dist/mcp.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "start": "node dist/index.js",
+    "buy": "node dist/buy-node.js",
+    "allowance": "node dist/bin/allowance.js",
     "test": "npm run build && node --test dist/policy.test.js",
     "mcp": "node dist/mcp.js"
   },

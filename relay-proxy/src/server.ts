@@ -2,6 +2,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { Connection, Keypair } from '@solana/web3.js';
 import { buildDeviceChallenge, verifyDeviceReceipt, VENDOR_PRICE_USD } from './simulator.js';
 import { readBadge, badgeAttached } from './badge-source.js';
 import { captureScreen, screenEnabled } from './badge-screen.js';
@@ -10,6 +11,9 @@ import { createStoreFromEnv, StoreUnavailableError, type Store } from './store/i
 import { getRelayIdentity } from './identity.js';
 import { AGENT_KEY_HEADER, WEB_AGENT_HEADER, WEB_SECRET_HEADER, WEB_USER_HEADER, resolveAgent, type AgentResolution } from './agent-auth.js';
 import { deviceState, getHeartbeatState, startHeartbeat } from './heartbeat.js';
+import { buildLedgerStatus } from './ledger.js';
+import { registerNode, listNodes, getNode, probeNode } from './node-registry.js';
+import { computeEarnings, notifySale, waitForEarningsChange, waitMsFromQuery } from './earnings.js';
 import { getEspectreSensor, getEspectreSensors, startEspectreDiscovery } from './espectre-discovery.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -17,11 +21,25 @@ const DATA_DIR = join(__dirname, '../../data');
 
 export const DEFAULT_PORT = 3402;
 
-/** Program ID for the vendx-zk Anchor program on devnet. */
-const VENDX_PROGRAM_ID = 'VnDXzkZKqiG2X8kGBJYDqExQEuCz9TnshCHsf2WVEoY';
-
 /** Must match DAY_CAP_MICRO_USDC in agent-buyer/src/policy.ts. */
 const DAY_CAP_MICRO_USDC = 5_000_000n;
+
+/** Optional RPC — when unset, /api/ledger reports deployed:false without hitting the network (keeps unit tests offline). */
+function ledgerConnection(): Connection | null {
+  const rpc = process.env.VENDX_RPC_URL ?? process.env.VENDX_LEDGER_RPC;
+  if (!rpc) return null;
+  return new Connection(rpc, 'confirmed');
+}
+
+function ledgerAuthorityKeypair(): Keypair | null {
+  const raw = process.env.VENDX_LEDGER_AUTHORITY;
+  if (!raw) return null;
+  try {
+    return Keypair.fromSecretKey(Uint8Array.from(JSON.parse(raw)));
+  } catch {
+    return null;
+  }
+}
 
 const ALLOW_HEADERS = ['Content-Type', 'X-Payment-Receipt', 'X-Payment', AGENT_KEY_HEADER, WEB_SECRET_HEADER, WEB_USER_HEADER, WEB_AGENT_HEADER].join(', ');
 
@@ -192,6 +210,7 @@ export function createRelayServer(port = DEFAULT_PORT, opts: RelayServerOptions 
         payTo: (req2.payTo as string | undefined) ?? '',
         amount: (req2.amount as string | undefined) ?? '0',
         network: (req2.network as string | undefined) ?? 'solana-devnet',
+        deviceId: typeof req2.deviceId === 'string' ? req2.deviceId : undefined,
       };
 
       // The buyer has already paid: a bad key never fails a settle, it only
@@ -215,6 +234,10 @@ export function createRelayServer(port = DEFAULT_PORT, opts: RelayServerOptions 
         return json(res, 402, result);
       }
 
+      // Wake the badge screens long-polling /api/earnings for the device that
+      // was paid: the registered node whose nonce this was, else this relay's own.
+      if (!result.idempotent) notifySale(result.node?.deviceId ?? telemetry.deviceId);
+
       res.setHeader('X-Payment-Response', result.settleHeader);
       return json(res, 200, {
         receipt: result.receipt,
@@ -224,13 +247,71 @@ export function createRelayServer(port = DEFAULT_PORT, opts: RelayServerOptions 
       });
     }
 
-    // GET /api/devices — fleet list
+    // POST /api/nodes/register — a VENDX node (ESP32 running firmware-vendor)
+    // announcing itself. Also its heartbeat: the node re-posts every
+    // `heartbeatSec`. See node-registry.ts for why the relay needs this.
+    if (req.method === 'POST' && (pathname === '/api/nodes/register' || pathname === '/api/nodes/heartbeat')) {
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(await readBody(req));
+      } catch {
+        return json(res, 400, { error: 'bad_json' });
+      }
+      const result = registerNode(parsed, req.socket.remoteAddress ?? undefined);
+      if (!result.ok) return json(res, 400, result);
+      if (result.isNew) {
+        console.log(`[relay-proxy] node registered: ${result.node.deviceId} at ${result.node.url} payTo=${result.node.payTo} price=${result.node.priceMicroUsdc}µ`);
+      }
+      // Confirm the URL answers as this device — after replying, never in the
+      // request path (the node is waiting on a 3 s timeout of its own).
+      void probeNode(result.node.deviceId).then(() => {
+        const n = getNode(result.node.deviceId);
+        if (n && (result.isNew || !n.reachable)) {
+          console.log(`[relay-proxy] node ${n.deviceId} probe: ${n.reachable ? 'reachable' : `unreachable (${n.probe?.detail ?? '?'})`} at ${n.url}`);
+        }
+      });
+      return json(res, 200, {
+        ok: true,
+        deviceId: result.node.deviceId,
+        registered: !result.isNew ? 'refreshed' : 'new',
+        heartbeatSec: result.node.heartbeatSec,
+        facilitator: `http://${req.headers.host ?? `localhost:${port}`}`,
+      });
+    }
+
+    // GET /api/nodes — registered nodes only (the fleet list merges them in)
+    if (req.method === 'GET' && pathname === '/api/nodes') {
+      return json(res, 200, { nodes: listNodes() });
+    }
+
+    // GET /api/devices — fleet list: the badge-or-simulator device plus every registered node
     if (req.method === 'GET' && pathname === '/api/devices') {
       const telemetry = await readBadge();
+      const earned = (rows: readonly { amountMicroUsdc: string }[]) =>
+        rows.reduce((sum, s) => sum + BigInt(s.amountMicroUsdc), 0n).toString();
       const deviceSales = await store.listSales({ source: telemetry.source, limit: 1000 });
-      const totalEarned = deviceSales.reduce(
-        (sum, s) => sum + BigInt(s.amountMicroUsdc),
-        0n,
+      const nodes = await Promise.all(
+        listNodes().map(async (n) => {
+          const nodeSales = await store.listSales({ source: 'esp32c3', deviceId: n.deviceId, limit: 1000 });
+          return {
+            id: n.deviceId,
+            source: n.source,
+            priceUsd: Number(n.priceMicroUsdc) / 1_000_000,
+            freeHeap: n.freeHeap ?? null,
+            largestBlock: n.largestBlock ?? null,
+            chip: n.chip ?? null,
+            lastSeen: n.lastSeen,
+            totalSales: nodeSales.length,
+            totalEarnedMicroUsdc: earned(nodeSales),
+            url: n.url,
+            mdns: n.mdns ?? null,
+            payTo: n.payTo,
+            network: n.network,
+            nodeState: n.nodeState,
+            reachable: n.reachable,
+            ageSeconds: n.ageSeconds,
+          };
+        }),
       );
       return json(res, 200, {
         devices: [
@@ -243,8 +324,14 @@ export function createRelayServer(port = DEFAULT_PORT, opts: RelayServerOptions 
             chip: telemetry.chip ?? null,
             lastSeen: telemetry.timestamp,
             totalSales: deviceSales.length,
-            totalEarnedMicroUsdc: totalEarned.toString(),
+            totalEarnedMicroUsdc: earned(deviceSales),
+            // Presence-node fields; absent on the console badge and the simulator.
+            ...(telemetry.motion ? { motion: telemetry.motion } : {}),
+            ...(telemetry.location ? { location: telemetry.location } : {}),
+            ...(telemetry.firmware ? { firmware: telemetry.firmware } : {}),
+            ...(telemetry.transport ? { transport: telemetry.transport } : {}),
           },
+          ...nodes,
           // ESPectre motion sensors found on the LAN via mDNS — see
           // espectre-discovery.ts for why these don't share the vendor shape
           // above (no wallet, no price: they aren't selling anything).
@@ -253,13 +340,68 @@ export function createRelayServer(port = DEFAULT_PORT, opts: RelayServerOptions 
       });
     }
 
+    // GET /api/earnings — one device's lifetime earnings, painted on the badge
+    // screens. `device` defaults to the device agents buy from on this relay.
+    // With `wait=<sec>` (≤ 30) and `since=<micro>`, the response is held until
+    // the total differs from `since` or the wait elapses; always 200.
+    if (req.method === 'GET' && pathname === '/api/earnings') {
+      const telemetry = await readBadge();
+      const deviceId = url.searchParams.get('device') || telemetry.deviceId;
+      const waitMs = waitMsFromQuery(url.searchParams.get('wait'));
+      const since = url.searchParams.get('since');
+      const snap = waitMs > 0
+        ? await waitForEarningsChange(store, deviceId, since, waitMs)
+        : await computeEarnings(store, deviceId);
+      res.setHeader('Cache-Control', 'no-store');
+      return json(res, 200, {
+        ...snap,
+        source: deviceId === telemetry.deviceId ? telemetry.source : null,
+      });
+    }
+
     // GET /api/devices/:id — single device detail
     const deviceMatch = /^\/api\/devices\/([^/]+)$/.exec(pathname);
     if (req.method === 'GET' && deviceMatch) {
       const id = decodeURIComponent(deviceMatch[1]);
+      const node = getNode(id);
+      if (node) {
+        const recentSales = await store.listSales({ source: 'esp32c3', deviceId: id, limit: 50 });
+        // Same shape the badge path serves (deviceId/timestamp/source/chip/heap),
+        // plus the node's own fields, so the site renders it with one component.
+        return json(res, 200, {
+          device: {
+            deviceId: node.deviceId,
+            timestamp: node.lastSeen,
+            source: node.source,
+            chip: node.chip,
+            freeHeap: node.freeHeap,
+            largestBlock: node.largestBlock,
+            url: node.url,
+            mdns: node.mdns,
+            resource: node.resource,
+            payTo: node.payTo,
+            priceMicroUsdc: node.priceMicroUsdc,
+            network: node.network,
+            asset: node.asset,
+            uptime: node.uptime,
+            rssi: node.rssi,
+            bucket: node.bucket,
+            firmware: node.firmware,
+            sdk: node.sdk,
+            firstSeen: node.firstSeen,
+            heartbeats: node.heartbeats,
+            heartbeatSec: node.heartbeatSec,
+            nodeState: node.nodeState,
+            reachable: node.reachable,
+            probe: node.probe,
+            ageSeconds: node.ageSeconds,
+          },
+          recentSales,
+        });
+      }
       const telemetry = await readBadge();
       if (telemetry.deviceId === id) {
-        const deviceSales = await store.listSales({ limit: 50 });
+        const deviceSales = await store.listSales({ source: telemetry.source, limit: 50 });
         return json(res, 200, { device: telemetry, recentSales: deviceSales });
       }
       const sensor = getEspectreSensor(id);
@@ -355,18 +497,35 @@ export function createRelayServer(port = DEFAULT_PORT, opts: RelayServerOptions 
       });
     }
 
-    // GET /api/ledger — on-chain ledger status
+    // GET /api/ledger — on-chain ledger status (deployed flag is live when VENDX_RPC_URL is set)
     if (req.method === 'GET' && pathname === '/api/ledger') {
       const allSales = await store.listSales({ limit: 1000 });
       const totalSettled = allSales.reduce(
         (sum, s) => sum + BigInt(s.amountMicroUsdc),
         0n,
       );
+      const authority = ledgerAuthorityKeypair();
+      const status = await buildLedgerStatus(
+        ledgerConnection(),
+        authority?.publicKey ?? null,
+        'solana-devnet',
+        allSales.length,
+      );
       return json(res, 200, {
-        programId: VENDX_PROGRAM_ID,
-        network: 'solana-devnet',
-        // The Anchor program is compile-verified; no deployed instance yet on devnet.
-        deployed: false,
+        programId: status.programId,
+        network: status.network,
+        deployed: status.deployed,
+        initialized: status.initialized,
+        authority: status.authority,
+        onChain: status.onChain
+          ? {
+              totalBuckets: status.onChain.totalBuckets.toString(),
+              totalSettledMicroUsdc: status.onChain.totalSettledMicroUsdc.toString(),
+              lastCommitSlot: status.onChain.lastCommitSlot.toString(),
+              stateRootHex: Buffer.from(status.onChain.stateRoot).toString('hex'),
+            }
+          : null,
+        lastCommitSignature: status.lastCommitSignature,
         totalBuckets: allSales.length,
         totalSettledMicroUsdc: totalSettled.toString(),
         totalSettledUsd: Number(totalSettled) / 1_000_000,
@@ -388,9 +547,12 @@ export function createRelayServer(port = DEFAULT_PORT, opts: RelayServerOptions 
     if (req.method === 'GET' && pathname === '/health') {
       const hb = getHeartbeatState();
       const degraded = store.kind === 'supabase' && hb.count > 0 && !hb.ok;
+      const nodes = listNodes();
       return json(res, 200, {
         status: degraded ? 'degraded' : 'ok',
         mode: badgeAttached() ? 'badge' : 'simulator',
+        nodes: nodes.length,
+        nodesLive: nodes.filter((n) => n.nodeState === 'live').length,
         persistence: store.kind,
         settlement: SETTLEMENT_MODE,
         relayId: identity.relayId,

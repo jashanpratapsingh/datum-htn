@@ -10,6 +10,7 @@
 import { readBadge } from './badge-source.js';
 import { SETTLEMENT_MODE } from './facilitator.js';
 import { getRelayIdentity } from './identity.js';
+import { listNodes } from './node-registry.js';
 import { VENDOR_WALLET, VENDOR_PRICE_USD } from './simulator.js';
 import type { DeviceRow, RelayRow, Store } from './store/types.js';
 
@@ -65,8 +66,32 @@ export async function heartbeatOnce(store: Store, port?: number): Promise<void> 
     },
     lastSeen: now,
   };
+  // Registered nodes that are currently live. The store stamps every row's
+  // last_seen with the heartbeat time, so a node that has stopped heartbeating
+  // is left out rather than kept looking alive by the relay.
+  const nodeRows: DeviceRow[] = listNodes()
+    .filter((n) => n.nodeState === 'live')
+    .map((n) => ({
+      relayId: id.relayId,
+      id: n.deviceId,
+      source: n.source,
+      resource: n.resource,
+      priceMicroUsdc: n.priceMicroUsdc,
+      payTo: n.payTo,
+      network: n.network,
+      chip: n.chip,
+      url: n.url,
+      heartbeatSec: n.heartbeatSec,
+      stats: {
+        freeHeap: n.freeHeap ?? null,
+        largestBlock: n.largestBlock ?? null,
+        reachable: n.reachable,
+        ageSeconds: n.ageSeconds,
+      },
+      lastSeen: n.lastSeen,
+    }));
   try {
-    await store.heartbeat(relay, [device]);
+    await store.heartbeat(relay, [device, ...nodeRows]);
     if (!state.ok && state.count > 0) console.log('[relay-proxy] heartbeat: recovered');
     state.ok = true;
     state.error = undefined;
