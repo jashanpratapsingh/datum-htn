@@ -80,6 +80,30 @@ test('menu shows the full address and Disconnect logs out', async ({ page }) => 
   expect(await (await page.request.get('/api/auth/session')).json()).toMatchObject({ authenticated: false });
 });
 
+test('opening the menu floats it under the pill and leaves the navbar in place', async ({ page }) => {
+  await installMockPhantom(page);
+  await page.goto('/');
+  await page.locator('[data-wallet="connect"]').first().click();
+  const pill = page.locator('[data-wallet="connected"]').first();
+  await expect(pill).toBeVisible({ timeout: 15_000 });
+
+  const brand = page.getByRole('link', { name: /vendx home/i });
+  const contact = page.getByRole('link', { name: /get in touch/i });
+  const before = { brand: await brand.boundingBox(), contact: await contact.boundingBox(), pill: await pill.boundingBox() };
+
+  await pill.click();
+  const menu = page.getByRole('dialog', { name: /^wallet$/i });
+  await expect(menu).toBeVisible();
+
+  // The menu is a popover: it must not take part in the header's layout.
+  expect(await brand.boundingBox()).toEqual(before.brand);
+  expect(await contact.boundingBox()).toEqual(before.contact);
+  expect(await pill.boundingBox()).toEqual(before.pill);
+  const box = (await menu.boundingBox())!;
+  expect(box.y).toBeGreaterThanOrEqual(before.pill!.y + before.pill!.height);
+  expect(box.x + box.width).toBeLessThanOrEqual(before.pill!.x + before.pill!.width + 1);
+});
+
 test('a different account in Phantom logs the site out', async ({ page }) => {
   await installMockPhantom(page);
   await page.goto('/');

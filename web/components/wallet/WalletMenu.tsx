@@ -32,12 +32,16 @@ export function WalletMenu({ id, floating, onClose }: { id: string; floating: bo
     firstRef.current?.focus({ preventScroll: true });
   }, []);
 
-  return (
+  // `.panel` (globals.css) sets position: relative outside Tailwind's layers,
+  // so an `absolute` utility on the panel itself loses and the menu would sit
+  // in the navbar's flow, pushing the whole header row down. The floating
+  // variant therefore gets its own positioned wrapper with no panel styling.
+  const panel = (
     <div
       id={id}
       role="dialog"
       aria-label="Wallet"
-      className={`panel text-left ${floating ? 'absolute right-0 top-full z-[80] mt-2 w-[19rem]' : 'w-full max-w-sm'}`}
+      className={`panel text-left ${floating ? 'w-[19rem]' : 'w-full max-w-sm'}`}
       data-wallet="menu"
     >
       <div className="px-4 py-3">
@@ -129,4 +133,7 @@ export function WalletMenu({ id, floating, onClose }: { id: string; floating: bo
       </div>
     </div>
   );
+
+  if (!floating) return panel;
+  return <div className="absolute right-0 top-full z-[80] mt-2">{panel}</div>;
 }
