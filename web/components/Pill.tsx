@@ -2,10 +2,13 @@
 
 import { useState } from 'react';
 
-const base =
+/** The pill shape, without flow margins — for pills placed by a flex parent (navbar). */
+export const pillBase =
   'inline-flex items-center justify-center rounded-full text-[13px] sm:text-[15px] ' +
-  'px-4 sm:px-5 py-[0.45em] mr-[0.4em] mb-[0.5em] whitespace-nowrap ' +
-  'transition-colors duration-200';
+  'px-4 sm:px-5 py-[0.45em] whitespace-nowrap transition-colors duration-200';
+
+/** The pill as it sits in a wrapping row of pills. */
+const base = `${pillBase} mr-[0.4em] mb-[0.5em]`;
 
 /** A white pill. Links to somewhere that actually exists. */
 export function Pill({ href, children }: { href: string; children: React.ReactNode }) {

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { WalletPill } from '@/components/wallet/WalletPill';
 
 const LINKS = [
   { href: '/devices', label: 'Devices' },
@@ -80,12 +81,15 @@ export default function NavBar() {
           ))}
         </nav>
 
-        <a
-          href="mailto:hello@vendx.dev"
-          className="hidden text-[15px] text-ink underline underline-offset-4 decoration-ink/40 hover:decoration-ink md:inline"
-        >
-          Get in touch
-        </a>
+        <div className="hidden items-center gap-4 md:flex">
+          <a
+            href="mailto:hello@vendx.dev"
+            className="text-[15px] text-ink underline underline-offset-4 decoration-ink/40 hover:decoration-ink"
+          >
+            Get in touch
+          </a>
+          <WalletPill />
+        </div>
 
         <button
           type="button"
@@ -138,6 +142,9 @@ export default function NavBar() {
               {l.label}
             </a>
           ))}
+          <div className="mt-1 self-start">
+            <WalletPill variant="menu" />
+          </div>
           <button
             type="button"
             onClick={() => setOpen(false)}
