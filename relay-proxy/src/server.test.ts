@@ -10,6 +10,8 @@ import assert from 'node:assert/strict';
 import type { AddressInfo } from 'node:net';
 import { createRelayServer } from './server.js';
 import { VENDOR_WALLET } from './simulator.js';
+import { MemoryStore } from './store/index.js';
+import { hashAgentKey, AGENT_KEY_HEADER } from './agent-auth.js';
 import { signReceipt, encodeReceipt } from '@vendx/protocol';
 import nacl from 'tweetnacl';
 
@@ -17,7 +19,29 @@ import nacl from 'tweetnacl';
 // Server lifecycle
 // ---------------------------------------------------------------------------
 
-const server = createRelayServer(0);
+// A registered agent, as the website would have minted it, seeded into the
+// memory store so API-key attribution is exercised without Supabase.
+const TEST_KEY = 'vendx_sk_' + 'A'.repeat(43);
+const TEST_AGENT = {
+  id: '11111111-1111-4111-8111-111111111111',
+  userId: '22222222-2222-4222-8222-222222222222',
+  name: 'test-agent',
+  keyPrefix: TEST_KEY.slice(0, 17),
+  createdAt: new Date().toISOString(),
+  lastUsedAt: null,
+  revokedAt: null,
+};
+const REVOKED_KEY = 'vendx_sk_' + 'B'.repeat(43);
+const store = new MemoryStore();
+store.seedAgent({ ...TEST_AGENT, keyHash: hashAgentKey(TEST_KEY) });
+store.seedAgent({
+  ...TEST_AGENT,
+  id: '33333333-3333-4333-8333-333333333333',
+  name: 'revoked-agent',
+  revokedAt: new Date().toISOString(),
+  keyHash: hashAgentKey(REVOKED_KEY),
+});
+const server = createRelayServer(0, { store });
 await new Promise<void>(resolve => server.listen(0, resolve));
 const { port } = server.address() as AddressInfo;
 const BASE = `http://localhost:${port}`;
@@ -403,5 +427,158 @@ test('GET /api/screen without VENDX_ALLOW_SCREEN → 404 { error: screen_capture
     assert.ok(typeof body.hint === 'string' && body.hint.length > 0);
   } finally {
     if (savedEnv !== undefined) process.env.VENDX_ALLOW_SCREEN = savedEnv;
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Persistence layer, attribution, directory
+// ---------------------------------------------------------------------------
+
+test('GET /health reports persistence: memory and a heartbeat object', async () => {
+  const res = await get('/health');
+  const body = (await res.json()) as { persistence: string; heartbeat: { count: number }; relayId: string };
+  assert.equal(body.persistence, 'memory');
+  assert.equal(typeof body.heartbeat.count, 'number');
+  assert.match(body.relayId, /^[0-9a-f]{64}$/);
+});
+
+test('OPTIONS preflight allows the agent key header', async () => {
+  const res = await fetch(`${BASE}/settle`, { method: 'OPTIONS' });
+  assert.equal(res.status, 204);
+  assert.match(res.headers.get('Access-Control-Allow-Headers') ?? '', /x-vendx-agent-key/i);
+});
+
+test('GET /api/sales entries never include the receipt', async () => {
+  const r1 = await get('/api/telemetry');
+  const { nonce } = (await r1.json()) as { nonce: string };
+  const settled = await settleWithHeaders(nonce, `SimTx_sales_${nonce.slice(0, 6)}`, {});
+  assert.equal(settled.status, 200);
+  const res = await get('/api/sales');
+  const body = (await res.json()) as { sales: Array<Record<string, unknown>> };
+  assert.ok(body.sales.length >= 1);
+  for (const s of body.sales) assert.equal('receipt' in s, false);
+});
+
+async function settleWithHeaders(nonce: string, txSignature: string, headers: Record<string, string>) {
+  return fetch(`${BASE}/settle`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...headers },
+    body: JSON.stringify({ nonce, txSignature, payTo: VENDOR_WALLET, amount: '100', network: 'solana-devnet' }),
+  });
+}
+
+test('POST /settle with a registered key → attribution: agent, visible in /api/me/purchases', async () => {
+  const r1 = await get('/api/telemetry', { [AGENT_KEY_HEADER]: TEST_KEY });
+  assert.equal(r1.status, 402);
+  const { nonce } = (await r1.json()) as { nonce: string };
+  const r2 = await settleWithHeaders(nonce, `SimTx_attributed_${nonce.slice(0, 6)}`, { [AGENT_KEY_HEADER]: TEST_KEY });
+  assert.equal(r2.status, 200);
+  const settled = (await r2.json()) as { attribution: string; receipt: string };
+  assert.equal(settled.attribution, 'agent');
+
+  const me = await get('/api/me', { [AGENT_KEY_HEADER]: TEST_KEY });
+  assert.equal(me.status, 200);
+  const meBody = (await me.json()) as { agent: { name: string }; userId: string };
+  assert.equal(meBody.agent.name, 'test-agent');
+  assert.equal(meBody.userId, TEST_AGENT.userId);
+
+  const p = await get('/api/me/purchases', { [AGENT_KEY_HEADER]: TEST_KEY });
+  assert.equal(p.status, 200);
+  const pBody = (await p.json()) as { purchases: Array<{ nonce: string; receipt?: string; solscanUrl: string }> };
+  const mine = pBody.purchases.find((x) => x.nonce === nonce);
+  assert.ok(mine, 'purchase listed for the agent');
+  assert.equal(mine.receipt, settled.receipt);
+  assert.match(mine.solscanUrl, /solscan\.io/);
+});
+
+test('POST /settle with an unknown key still settles → attribution: unknown_key', async () => {
+  const r1 = await get('/api/telemetry');
+  const { nonce } = (await r1.json()) as { nonce: string };
+  const unknown = 'vendx_sk_' + 'Z'.repeat(43);
+  const r2 = await settleWithHeaders(nonce, `SimTx_unknown_${nonce.slice(0, 6)}`, { [AGENT_KEY_HEADER]: unknown });
+  assert.equal(r2.status, 200);
+  const body = (await r2.json()) as { attribution: string };
+  assert.equal(body.attribution, 'unknown_key');
+  const p = await get('/api/me/purchases', { [AGENT_KEY_HEADER]: TEST_KEY });
+  const pBody = (await p.json()) as { purchases: Array<{ nonce: string }> };
+  assert.equal(pBody.purchases.some((x) => x.nonce === nonce), false);
+});
+
+test('GET /api/telemetry (402 path) with an unknown or malformed key → 401 bad_agent_key', async () => {
+  const r1 = await get('/api/telemetry', { [AGENT_KEY_HEADER]: 'vendx_sk_' + 'Q'.repeat(43) });
+  assert.equal(r1.status, 401);
+  assert.equal(((await r1.json()) as { error: string }).error, 'bad_agent_key');
+  const r2 = await get('/api/telemetry', { [AGENT_KEY_HEADER]: 'not-a-key' });
+  assert.equal(r2.status, 401);
+  const r3 = await get('/api/telemetry', { [AGENT_KEY_HEADER]: REVOKED_KEY });
+  assert.equal(r3.status, 401);
+  assert.equal(((await r3.json()) as { error: string }).error, 'agent_revoked');
+});
+
+test('GET /api/me without a key → 401 missing_agent_key; unknown key → 401', async () => {
+  const r1 = await get('/api/me');
+  assert.equal(r1.status, 401);
+  assert.equal(((await r1.json()) as { error: string }).error, 'missing_agent_key');
+  const r2 = await get('/api/me', { [AGENT_KEY_HEADER]: 'vendx_sk_' + 'Y'.repeat(43) });
+  assert.equal(r2.status, 401);
+});
+
+test('POST /settle twice with the same nonce and txSignature → same receipt, idempotent: true', async () => {
+  const r1 = await get('/api/telemetry');
+  const { nonce } = (await r1.json()) as { nonce: string };
+  const sig = `SimTx_retry_${nonce.slice(0, 6)}`;
+  const a = await settleWithHeaders(nonce, sig, {});
+  assert.equal(a.status, 200);
+  const aBody = (await a.json()) as { receipt: string; idempotent?: boolean };
+  const b = await settleWithHeaders(nonce, sig, {});
+  assert.equal(b.status, 200);
+  const bBody = (await b.json()) as { receipt: string; idempotent?: boolean };
+  assert.equal(bBody.receipt, aBody.receipt);
+  assert.equal(bBody.idempotent, true);
+  assert.equal(aBody.idempotent, undefined);
+});
+
+test('POST /settle for a settled nonce with a different txSignature → 402 nonce_replayed', async () => {
+  const r1 = await get('/api/telemetry');
+  const { nonce } = (await r1.json()) as { nonce: string };
+  const a = await settleWithHeaders(nonce, `SimTx_first_${nonce.slice(0, 6)}`, {});
+  assert.equal(a.status, 200);
+  const b = await settleWithHeaders(nonce, `SimTx_second_${nonce.slice(0, 6)}`, {});
+  assert.equal(b.status, 402);
+  assert.equal(((await b.json()) as { errorReason: string }).errorReason, 'nonce_replayed');
+});
+
+test('GET /api/directory lists this relay and its device after the first heartbeat', async () => {
+  let body: { relays: Array<{ id: string; state: string }>; devices: Array<{ id: string }> } = { relays: [], devices: [] };
+  for (let i = 0; i < 40 && body.relays.length === 0; i++) {
+    body = (await (await get('/api/directory')).json()) as typeof body;
+    if (body.relays.length === 0) await new Promise((r) => setTimeout(r, 50));
+  }
+  assert.equal(body.relays.length, 1);
+  assert.match(body.relays[0].id, /^[0-9a-f]{64}$/);
+  assert.equal(body.relays[0].state, 'live');
+  const devices = (await (await get('/api/devices')).json()) as { devices: Array<{ id: string }> };
+  assert.equal(body.devices[0].id, devices.devices[0].id);
+});
+
+test('POST /settle with the web secret + x-vendx-agent-id → sale attributed to that agent', async () => {
+  process.env.VENDX_WEB_SECRET = 'test-web-secret';
+  try {
+    const r1 = await get('/api/telemetry');
+    const { nonce } = (await r1.json()) as { nonce: string };
+    const r2 = await settleWithHeaders(nonce, `SimTx_webagent_${nonce.slice(0, 6)}`, {
+      'x-vendx-web-secret': 'test-web-secret',
+      'x-vendx-user-id': TEST_AGENT.userId,
+      'x-vendx-agent-id': TEST_AGENT.id,
+    });
+    assert.equal(r2.status, 200);
+    const settled = (await r2.json()) as { attribution: string };
+    assert.equal(settled.attribution, 'web');
+    const p = await get('/api/me/purchases', { [AGENT_KEY_HEADER]: TEST_KEY });
+    const pBody = (await p.json()) as { purchases: Array<{ nonce: string; agentId?: string | null }> };
+    const mine = pBody.purchases.find((x) => x.nonce === nonce);
+    assert.ok(mine, 'the web-side purchase is listed under the named agent');
+  } finally {
+    delete process.env.VENDX_WEB_SECRET;
   }
 });

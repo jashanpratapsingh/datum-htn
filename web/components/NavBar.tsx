@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import AuthStatus from './auth/AuthStatus';
 import { WalletPill } from '@/components/wallet/WalletPill';
 
 const LINKS = [
@@ -11,6 +12,8 @@ const LINKS = [
   { href: '/ledger', label: 'Ledger' },
   { href: '/protocol', label: 'Protocol' },
   { href: '/docs', label: 'Docs' },
+  { href: '/connect', label: 'Connect' },
+  { href: '/account', label: 'Account' },
 ];
 
 export default function NavBar() {
@@ -81,14 +84,9 @@ export default function NavBar() {
           ))}
         </nav>
 
-        <div className="hidden items-center gap-4 md:flex">
-          <a
-            href="mailto:hello@vendx.dev"
-            className="text-[15px] text-ink underline underline-offset-4 decoration-ink/40 hover:decoration-ink"
-          >
-            Get in touch
-          </a>
+        <div className="hidden items-center gap-3 md:flex">
           <WalletPill />
+          <AuthStatus />
         </div>
 
         <button
@@ -142,8 +140,9 @@ export default function NavBar() {
               {l.label}
             </a>
           ))}
-          <div className="mt-1 self-start">
+          <div className="mt-1 flex flex-col gap-2 self-start">
             <WalletPill variant="menu" />
+            <AuthStatus compact />
           </div>
           <button
             type="button"

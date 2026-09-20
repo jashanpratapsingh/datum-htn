@@ -1,8 +1,8 @@
 import { defineConfig, devices } from '@playwright/test';
 
-// Another dev server often sits on :3000 on this laptop (and reuseExistingServer
-// would happily test IT instead of this checkout). PORT moves the whole run.
-const PORT = process.env.PORT ?? '3000';
+// Other local servers often hold :3000 (and reuseExistingServer would happily
+// test THEM instead of this checkout). E2E_PORT or PORT moves the whole run.
+const PORT = process.env.E2E_PORT ?? process.env.PORT ?? '3000';
 
 export default defineConfig({
   testDir: './tests',

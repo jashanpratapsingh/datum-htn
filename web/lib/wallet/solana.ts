@@ -16,6 +16,7 @@ import {
   Connection,
   LAMPORTS_PER_SOL,
   PublicKey,
+  SystemProgram,
   Transaction,
   TransactionInstruction,
   clusterApiUrl,
@@ -312,4 +313,72 @@ export function describePaymentError(e: unknown): string {
   }
   if (phase === 'build') return msg;
   return msg;
+}
+
+// ---------------------------------------------------------------------------
+// Funding an agent wallet (the custodial wallet the MCP server pays from).
+// ---------------------------------------------------------------------------
+
+export interface FundingRequest {
+  payer: string;
+  /** The agent wallet's public key. */
+  to: string;
+  usdcMicro: string;
+  /** SOL for the agent's transaction fees and the vendor ATA rent, in lamports. */
+  lamports: number;
+  /** Memo: the agent id, so the deposit is recognisable on-chain. */
+  memo: string;
+  network: VendxNetwork;
+}
+
+/** One transaction: USDC transferChecked into the agent's (idempotently created) ATA plus a SOL transfer for fees. */
+export async function buildFundingTx(req: FundingRequest): Promise<{ tx: Transaction; lastValidBlockHeight: number }> {
+  const conn = getConnection(req.network);
+  const mint = usdcMint(req.network);
+  const payer = new PublicKey(req.payer);
+  const to = new PublicKey(req.to);
+  const source = getAssociatedTokenAddressSync(mint, payer);
+  const destination = getAssociatedTokenAddressSync(mint, to);
+  const tx = new Transaction();
+  if (BigInt(req.usdcMicro) > 0n) {
+    tx.add(
+      createAssociatedTokenAccountIdempotentInstruction(payer, destination, to, mint),
+      createTransferCheckedInstruction(source, mint, destination, payer, BigInt(req.usdcMicro), USDC_DECIMALS),
+    );
+  }
+  if (req.lamports > 0) tx.add(SystemProgram.transfer({ fromPubkey: payer, toPubkey: to, lamports: req.lamports }));
+  tx.add(new TransactionInstruction({ keys: [], programId: MEMO_PROGRAM_ID, data: Buffer.from(req.memo, 'utf8') }));
+  const { blockhash, lastValidBlockHeight } = await conn.getLatestBlockhash('confirmed');
+  tx.recentBlockhash = blockhash;
+  tx.feePayer = payer;
+  return { tx, lastValidBlockHeight };
+}
+
+/** Fund an agent wallet through Phantom; same sign-here/send-ourselves path as payWithPhantom. */
+export async function fundWithPhantom(provider: PhantomProvider, req: FundingRequest, onSent?: (signature: string) => void): Promise<PaymentResult> {
+  let tx: Transaction;
+  let lastValidBlockHeight: number;
+  try {
+    ({ tx, lastValidBlockHeight } = await buildFundingTx(req));
+  } catch (e) {
+    throw new PaymentError('build', errText(e), undefined, { cause: e });
+  }
+  await simulatePayment(tx, req.network);
+  if (typeof provider.signTransaction === 'function') {
+    const signed = await provider.signTransaction(tx);
+    const signature = await sendAndConfirm(signed.serialize(), lastValidBlockHeight, req.network, onSent);
+    return { signature, explorer: explorerTx(signature, req.network) };
+  }
+  const { signature } = await provider.signAndSendTransaction(tx, { preflightCommitment: 'confirmed' });
+  onSent?.(signature);
+  await confirmSignature(signature, lastValidBlockHeight, req.network);
+  return { signature, explorer: explorerTx(signature, req.network) };
+}
+
+/** "0.50" → 500000n; null when it is not a plain decimal with ≤ 6 fraction digits. */
+export function usdToMicroSafe(raw: string): bigint | null {
+  const t = raw.trim();
+  if (!/^\d+(\.\d{1,6})?$/.test(t)) return null;
+  const [whole, frac = ''] = t.split('.');
+  return BigInt(whole) * 1_000_000n + BigInt((frac + '000000').slice(0, 6));
 }

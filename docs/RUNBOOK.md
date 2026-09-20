@@ -95,60 +95,156 @@ tail -f docs/STATUS.md
 
 ## Environment variables
 
-No `.env` file is committed. Create `.env.local` (git-ignored) at the repo root:
+Nothing with a secret is committed. Names are listed in `.env.example` at the
+repo root. Where each value lives:
+
+| Where | File | Holds |
+| --- | --- | --- |
+| relay (laptop) | `~/.vendx/relay.env` (chmod 600, sourced by `scripts/relay.sh`) | `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, `VENDX_WEB_SECRET`, `VENDX_RELAY_LABEL` |
+| web (local) | `web/.env.local` | `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, `NEXT_PUBLIC_RELAY_URL`, `VENDX_WEB_BUYER_KEYPAIR`, `VENDX_WEB_SECRET`; Phantom login: `SESSION_SECRET`, `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `NEXT_PUBLIC_SOLANA_RPC_URL`, optional `SIWS_ALLOWED_DOMAINS` |
+| web (Vercel) | project settings, prod + preview + development | the same set |
+| buyer / MCP | shell env or `claude mcp add -e …` | `RELAY_URL`, `VENDX_API_KEY`, optional `VENDX_BUYER_KEYPAIR` |
+
+Keys come from the CLI without pasting them into a terminal transcript:
 
 ```bash
-# Solana
-SOLANA_RPC_URL=https://api.devnet.solana.com
-VENDX_NETWORK=solana-devnet
-
-# Facilitator key (relay-proxy)
-FACILITATOR_SECRET_KEY=<base58 64-byte Ed25519 secret key>
-FACILITATOR_PUBLIC_KEY=<base58 32-byte Ed25519 public key>
-
-# Buyer wallet
-BUYER_SECRET_KEY=<base58 64-byte Ed25519 secret key>
-
-# Supabase (local dev — from `supabase status` output)
-SUPABASE_URL=http://127.0.0.1:54321
-SUPABASE_ANON_KEY=<from supabase status>
-SUPABASE_SERVICE_KEY=<from supabase status>
-
-# Vercel (web frontend deploy)
-NEXT_PUBLIC_RELAY_URL=https://<your-relay-proxy-url>
-# Several relays (vendors) side by side: comma-separated label=url. Takes
-# precedence over NEXT_PUBLIC_RELAY_URL. Each relay keeps its own nonces, sales
-# and facilitator key, so the site shows them as separate vendors and pins every
-# payment to the relay that issued the 402 (web/lib/relays.ts).
-NEXT_PUBLIC_RELAYS=jashan=https://relay.vendx.biz,teammate=https://<their-relay>
-NEXT_PUBLIC_SUPABASE_URL=<production Supabase URL>
-NEXT_PUBLIC_SUPABASE_ANON_KEY=<production anon key>
-
-# Phantom login (web). Server-side only except NEXT_PUBLIC_SOLANA_RPC_URL.
-NEXT_PUBLIC_SOLANA_RPC_URL=https://api.devnet.solana.com   # balances + Phantom payments in the browser
-SESSION_SECRET=<openssl rand -hex 32>                        # HMAC key for the vendx_session cookie; required on Vercel
-SUPABASE_URL=https://dhjhsupqdmcdyqghxace.supabase.co        # hosted project Datum-htn; vendx_accounts lives here
-SUPABASE_SERVICE_KEY=<supabase projects api-keys --project-ref dhjhsupqdmcdyqghxace>
-SIWS_ALLOWED_DOMAINS=                                        # optional extra hosts for the SIWS domain line (previews)
+supabase projects api-keys --project-ref dhjhsupqdmcdyqghxace -o env --reveal > ~/.vendx/supabase-keys.env
+chmod 600 ~/.vendx/supabase-keys.env
+# SUPABASE_DEFAULT_KEY (sb_secret_…) → SUPABASE_SECRET_KEY in relay.env
+# SUPABASE_PUBLISHABLE_KEY           → NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY in web/.env.local and Vercel
 ```
 
-`web/.env.example` and `relay-proxy/.env.example` list each package's variables;
-`scripts/dev.env.example` is the template for the one-command stack below.
+`NEXT_PUBLIC_RELAYS` (comma-separated `label=url`) still works as an override
+for the handshake proxies; the marketplace lists relays from the Supabase
+directory regardless (see below).
 
 The facilitator public key must match what is compiled into the firmware. Changing
-it requires a firmware rebuild and re-flash.
+it requires a firmware rebuild and re-flash. It is also the relay's id in the
+directory, so a fresh checkout without `keys/facilitator.json` registers as a
+new relay (handy for a dev relay; confusing if you meant to be the production one).
 
-## Supabase local dev
+## Supabase (hosted project `Datum-htn`, ref `dhjhsupqdmcdyqghxace`)
+
+The relay is the only writer (service-role key). The website reads the public
+directory and sales view with the publishable key and the signed-in user's own
+rows through RLS. Schema: `supabase/migrations/0003_persistence.sql` (+ `0004`,
+`0005`).
 
 ```bash
-supabase start           # starts Postgres, Studio, Realtime on local ports
-supabase status          # prints API URL, anon/service keys
-supabase db reset        # re-runs migrations + seed
-supabase stop            # shut down
+supabase migration list        # local vs remote versions
+supabase db push               # apply new migrations (password from the keychain since the project is linked)
+supabase config diff           # preview auth settings; `supabase config push` writes only declared properties
 ```
 
-Studio runs at `http://127.0.0.1:54323` by default. Migrations live in
-`supabase/migrations/`.
+What persists: nonces (scoped per relay), used transaction signatures, sales
+(with `agent_id` / `user_id` attribution and the receipt, owner-only), the
+relay/device directory, and agents (API keys, hash only). `scripts/relay.sh up`
+warns when `~/.vendx/relay.env` is missing: the relay then runs on memory,
+nothing survives a restart and API keys are not recognised.
+
+Restart proof (trust mode, no USDC needed):
+
+```bash
+scripts/relay.sh demo
+N=$(curl -s localhost:3402/api/telemetry | jq -r .nonce)
+R=$(curl -s -XPOST localhost:3402/settle -H 'content-type: application/json' \
+     -d "{\"nonce\":\"$N\",\"txSignature\":\"SimTx_$N\",\"amount\":\"100\",\"network\":\"solana-devnet\"}" | jq -r .receipt)
+scripts/relay.sh demo                                   # restart
+curl -s -o /dev/null -w '%{http_code}\n' -H "x-payment-receipt: $R" localhost:3402/api/telemetry   # 200
+curl -s -H "x-payment-receipt: $R" localhost:3402/api/telemetry                                     # {"error":"nonce_replayed"}
+```
+
+## Connecting a coding agent (remote MCP server)
+
+The website IS the MCP server: `https://<site>/api/mcp` (Streamable HTTP,
+stateless) plus its own OAuth 2.1 authorization server. `/connect` prints the
+one-liners; the flow for a buyer is:
+
+1. **Install.** Claude Code: `claude mcp add --transport http --scope user vendx https://<site>/api/mcp`,
+   then `/mcp` → vendx → Authenticate. Codex: `codex mcp add vendx --url …` +
+   `codex mcp login vendx`. Cursor: the deep link on `/connect` or `.cursor/mcp.json`.
+   The first call gets `401` + `WWW-Authenticate: … resource_metadata=…`; the
+   client reads `/.well-known/oauth-protected-resource/api/mcp`, then
+   `/.well-known/oauth-authorization-server`, registers itself at
+   `/api/oauth/register` (loopback or https redirect URIs only) and opens the browser.
+2. **Approve** at `/oauth/authorize`: sign in (Phantom first, email fallback —
+   both are one Supabase auth user, see migration 0006), pick or name the agent,
+   set a per-reading and a daily cap. Approving creates the agent
+   (`vendx_create_agent_oauth`, no API key), its custodial Solana wallet
+   (`vendx_agent_wallets`, secret sealed with `VENDX_WALLET_KEK`) and a 10-minute
+   code bound to the client's PKCE challenge.
+3. **Fund** at `/oauth/authorize/done`: one Phantom transaction sends devnet USDC
+   (what readings cost) and a little SOL (what transactions cost) to the agent
+   wallet, then "Continue" hands the code back to the client, which exchanges it
+   at `/api/oauth/token` for a 1 h access token and a 30 d refresh token
+   (rotated on every use; a replayed refresh token revokes the whole family).
+4. **Buy.** Tools: `vendx_list_devices` (Supabase directory), `vendx_buy_reading`
+   (402 → reserve against the caps in Postgres → pay from the agent wallet →
+   `/settle` with `x-vendx-web-secret` + `x-vendx-user-id` + `x-vendx-agent-id`
+   → redeem → `vendx_readings`), `vendx_reading_history` (with stats),
+   `vendx_budget_status`, `vendx_transactions`. The wallet balance is the hard
+   budget; the caps are checked by `vendx_reserve_spend` (row lock on the agent)
+   before any transfer, so parallel tool calls cannot overspend.
+5. **See it** on `/account`: agents with wallet balances, caps (editable),
+   sessions, activity-over-time per device, spend per hour, transactions with
+   Solscan links. Revoking an agent revokes every token it had; the next call
+   is a 401 before any money moves.
+
+Static-key alternative (no browser step): **Register agent** on `/account`
+mints `vendx_sk_…` once; use it as a bearer header —
+`claude mcp add --transport http vendx https://<site>/api/mcp --header "Authorization: Bearer vendx_sk_…"`
+(`/account` prints the Codex and Cursor forms too). The stdio server in
+`agent-buyer/dist/mcp.js` still works for self-custody buyers who want to pay
+from their own keypair.
+
+Smoke test from a shell: `MCP_URL=https://<site>/api/mcp VENDX_API_KEY=vendx_sk_… node scripts/mcp-smoke.mjs`
+(`SMOKE_BUY=1` also buys one reading, ~100 µUSDC). It never prints the key.
+
+### Agent wallets and the KEK
+
+`VENDX_WALLET_KEK` (32 bytes, base64; `openssl rand -base64 32`) seals every
+agent wallet's secret key with AES-256-GCM (`web/lib/wallet/keystore.ts`). It
+lives on Vercel and in `~/.vendx/web-mcp.env`, never in git. Losing it strands
+every agent wallet; the same value must be used by every deployment that
+serves `/api/mcp`. Rows record `kek_id` (first 8 hex of sha256(kek)) so a
+rotation can re-seal them. Wallets are created lazily (consent page, or the
+first tool call of a key-registered agent).
+
+### Deploying: `scripts/deploy.sh`
+
+```bash
+scripts/deploy.sh check          # tooling, logins (vercel/gh as jashanpratapsingh), env NAMES in ~/.vendx/web-mcp.env
+scripts/deploy.sh migrate        # supabase migration list + db push --linked
+scripts/deploy.sh env preview    # push the env file to Vercel production + preview (values never echoed)
+scripts/deploy.sh build          # protocol → tarball if changed → relay tests → web unit tests → next build
+scripts/deploy.sh preview        # vercel deploy → preview URL → verify against it
+scripts/deploy.sh release        # push, PR, merge → git-linked Vercel builds main into production → verify
+scripts/deploy.sh relay          # restart the laptop relay from THIS checkout (Supabase-backed, verify mode)
+scripts/deploy.sh verify [url]   # discovery docs, 401 hint, mcp-smoke.mjs with the key in ~/.vendx/mcp-smoke.env
+```
+
+The relay at `relay.vendx.biz` must run the Supabase-backed build for the
+marketplace directory to have devices in it; `scripts/deploy.sh relay` (or
+`scripts/relay.sh up` from an up-to-date checkout) does that.
+
+### Background stack: `scripts/stack.sh` (tmux)
+
+`scripts/stack.sh up [--web]` opens a tmux session `vendx` with windows
+`relay` (real mode via relay.sh), `tunnel` (cloudflared), `smoke` (the MCP
+smoke test against production every 5 min) and optionally `web` (`next dev`).
+`status` prints relay, tunnel and production-MCP health; `attach`, `logs
+<win>`, `down`.
+
+## Buying from the website
+
+Signed-in users can run the handshake on `/agent`. The site pays from a shared
+devnet wallet (`VENDX_WEB_BUYER_KEYPAIR`, a dedicated key at
+`~/.vendx/web-buyer-devnet.json`, funded with a little devnet SOL and USDC),
+settles with `X-Vendx-Web-Secret` + `X-Vendx-User-Id` so the relay records the
+sale against that account, and streams each step to the page. Guards: session
+required, the server fetches its own 402, devnet + USDC mint + per-purchase cap
+(`VENDX_WEB_MAX_MICRO_USDC`, default 100000), five purchases a minute per
+account. Top the wallet up when `/agent` reports `buyer_unfunded`.
 
 ## Firmware
 

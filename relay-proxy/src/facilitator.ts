@@ -12,7 +12,10 @@
  *
  * Either way the nonce must be one this relay issued, unused and unexpired, and
  * the receipt is signed over the payTo/amount that were *issued*, not the
- * client's copy. A transaction signature buys exactly one receipt.
+ * client's copy. A transaction signature buys exactly one receipt: claiming the
+ * signature and recording the sale are one write in the Store, so a receipt
+ * can never exist without its sale row, and a retry of the same nonce+tx (a
+ * buyer whose first response was dropped) gets the same receipt back.
  */
 
 import { Connection, clusterApiUrl, type ParsedInstruction, type ParsedTransactionWithMeta } from '@solana/web3.js';
@@ -27,7 +30,7 @@ import {
   type VendxNetwork,
 } from '@vendx/protocol';
 import { getKeys } from './keys.js';
-import { peekNonce } from './nonce-store.js';
+import type { AgentRef, SaleSource, Store } from './store/types.js';
 
 export type SettlementMode = 'verify' | 'trust';
 export const SETTLEMENT_MODE: SettlementMode = process.env.VENDX_SETTLEMENT === 'trust' ? 'trust' : 'verify';
@@ -44,10 +47,31 @@ export interface SettleRequest {
   network: string;
 }
 
+/** Who gets credited for the sale, as the request presented it. */
+export type Attribution = 'agent' | 'web' | 'anonymous' | 'unknown_key' | 'revoked_key';
+
+export interface SettleContext {
+  store: Store;
+  sale: {
+    relayId: string;
+    source: SaleSource;
+    /** Fallback when the issued nonce carries no device id. */
+    deviceId?: string;
+    agent?: AgentRef | null;
+    userId?: string | null;
+    /** Agent named by the website alongside the web secret (no key involved). */
+    agentId?: string | null;
+  };
+  attribution: Attribution;
+}
+
 export interface SettleOk {
   success: true;
   receipt: string;
   settleHeader: string;
+  attribution: Attribution;
+  /** True when this nonce+signature had already been settled and the earlier receipt is returned. */
+  idempotent?: boolean;
   /** Fee payer read from the confirmed transaction; 'unverified' in trust mode. */
   payer: string;
 }
@@ -57,8 +81,6 @@ export interface SettleErr {
   errorReason: string;
   detail?: string;
 }
-
-const usedSignatures = new Set<string>();
 
 const err = (errorReason: string, detail?: string): SettleErr => ({ success: false, errorReason, detail });
 
@@ -113,8 +135,9 @@ async function verifyOnChain(
   return { ok: true, payer };
 }
 
-export async function settle(req: SettleRequest): Promise<SettleOk | SettleErr> {
-  const issued = peekNonce(req.nonce);
+export async function settle(req: SettleRequest, ctx: SettleContext): Promise<SettleOk | SettleErr> {
+  const { store } = ctx;
+  const issued = await store.peekNonce(req.nonce);
   const now = Math.floor(Date.now() / 1000);
   if (!issued) return err('nonce_unknown');
   if (issued.used) return err('nonce_replayed');
@@ -123,7 +146,6 @@ export async function settle(req: SettleRequest): Promise<SettleOk | SettleErr> 
   if (req.amount && BigInt(req.amount) < BigInt(issued.amountMicroUsdc)) {
     return err('insufficient_amount', 'amount below the issued challenge');
   }
-  if (usedSignatures.has(req.txSignature)) return err('signature_reused');
 
   const network = (req.network || 'solana-devnet') as VendxNetwork;
   let payer = 'unverified';
@@ -137,7 +159,6 @@ export async function settle(req: SettleRequest): Promise<SettleOk | SettleErr> 
     if (!('ok' in check)) return check;
     payer = check.payer;
   }
-  usedSignatures.add(req.txSignature);
 
   const { secretKey } = getKeys();
   const body: ReceiptBody = {
@@ -151,7 +172,25 @@ export async function settle(req: SettleRequest): Promise<SettleOk | SettleErr> 
     expiresAt: now + 300,
   };
 
-  const signed = signReceipt(body, secretKey);
+  // Signing is local and pure; the receipt only leaves this process once the
+  // settlement is recorded.
+  const receipt = encodeReceipt(signReceipt(body, secretKey));
+
+  const recorded = await store.recordSettlement({
+    id: req.nonce,
+    nonce: req.nonce,
+    amountMicroUsdc: issued.amountMicroUsdc,
+    timestamp: now,
+    txSignature: req.txSignature,
+    source: ctx.sale.source,
+    deviceId: issued.deviceId || ctx.sale.deviceId,
+    relayId: ctx.sale.relayId,
+    network,
+    payer,
+    agentId: ctx.sale.agent?.id ?? ctx.sale.agentId ?? null,
+    userId: ctx.sale.userId ?? ctx.sale.agent?.userId ?? null,
+    receipt,
+  });
 
   const settleResp: SettleResponse = {
     success: true,
@@ -160,10 +199,29 @@ export async function settle(req: SettleRequest): Promise<SettleOk | SettleErr> 
     payer,
   };
 
+  if (!recorded.ok) {
+    if (recorded.reason === 'signature_reused') {
+      if (recorded.priorNonce === req.nonce && recorded.priorReceipt) {
+        // Same buyer, same payment, dropped response: hand back the receipt already issued.
+        return {
+          success: true,
+          receipt: recorded.priorReceipt,
+          settleHeader: encodeSettleHeader(settleResp),
+          attribution: ctx.attribution,
+          payer,
+          idempotent: true,
+        };
+      }
+      return err('signature_reused');
+    }
+    return err('nonce_replayed', 'a receipt was already issued for this nonce');
+  }
+
   return {
     success: true,
-    receipt: encodeReceipt(signed),
+    receipt,
     settleHeader: encodeSettleHeader(settleResp),
+    attribution: ctx.attribution,
     payer,
   };
 }

@@ -106,7 +106,11 @@ export interface SaleEntry {
   signature: string;
   resource: string;
   description: string;
-  source: 'badge' | 'simulator';
+  source: 'badge' | 'simulator' | 'esp32c3';
+  /** Buyer wallet, when the relay verified the transfer on-chain. */
+  payer?: string;
+  /** True when the sale was tied to an account (agent key or web purchase). */
+  attributed?: boolean;
 }
 
 export interface WalletSpend {
@@ -187,7 +191,10 @@ interface WireSale {
   amountMicroUsdc: string;
   timestamp: number;
   txSignature: string;
-  source: 'badge' | 'simulator';
+  source: 'badge' | 'simulator' | 'esp32c3';
+  payer?: string;
+  agentId?: string | null;
+  userId?: string | null;
 }
 
 interface WirePolicy {
@@ -326,6 +333,8 @@ export async function fetchSales(): Promise<RelayResult<SaleEntry[]>> {
           resource: SALE_RESOURCE,
           description: SALE_DESCRIPTION,
           source: s.source,
+          payer: s.payer,
+          attributed: Boolean(s.agentId || s.userId),
         })),
       )
       .sort(byNewest),
