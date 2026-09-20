@@ -11,6 +11,8 @@
     "test": "npm run build && node --test dist/policy.test.js"
   },
   "dependencies": {
+    "@solana/spl-token": "^0.4.15",
+    "@solana/web3.js": "^1.99.0",
     "@vendx/protocol": "*",
     "tweetnacl": "^1.0.3"
   },

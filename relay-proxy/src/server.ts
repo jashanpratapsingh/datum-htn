@@ -124,7 +124,7 @@ export function createRelayServer(port = DEFAULT_PORT) {
         network: (req2.network as string | undefined) ?? 'solana-devnet',
       };
 
-      const result = settle(settleReq);
+      const result = await settle(settleReq);
       if (!result.success) {
         return json(res, 402, result);
       }

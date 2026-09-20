@@ -28,6 +28,8 @@ const exec = promisify(execFile);
 const PY = process.env.VENDX_PY ?? '.venv-pio/bin/python';
 const SCRIPT = process.env.VENDX_BADGE_SCRIPT ?? 'scripts/badge.py';
 const PORT = process.env.VENDX_BADGE_PORT ?? '/dev/cu.usbmodem101';
+/** The serial device the poller watches; exported for the startup log. */
+export const BADGE_PORT = PORT;
 
 /** How long one console read may take before we call the badge unresponsive. */
 const READ_TIMEOUT_MS = 20_000;

@@ -32,3 +32,8 @@ export function consumeNonce(nonce: string): ConsumeResult {
   entry.used = true;
   return { ok: true, entry };
 }
+
+/** Read-only lookup for the facilitator: the device consumes, /settle only checks. */
+export function peekNonce(nonce: string): NonceEntry | undefined {
+  return store.get(nonce);
+}

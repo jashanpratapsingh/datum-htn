@@ -219,33 +219,90 @@ what it did not check. Before trusting any screenshot, kill anything on `:3000`;
 build.
 
 
+## Running the relay: real by default, demo on request
+
+```bash
+scripts/relay.sh up       # default: poll the conference badge → source: "badge"; receipts only for
+                          # USDC transfers confirmed on Solana (VENDX_SETTLEMENT=verify)
+scripts/relay.sh demo     # simulator telemetry, poller disabled, receipts signed on trust — no wallet needed
+scripts/relay.sh status   # pid, mode, settlement, vendor wallet, /health, who holds the badge port
+scripts/relay.sh down
+```
+
+### Real payment (devnet)
+
+The relay quotes `VENDX_VENDOR_WALLET` as `payTo`; `relay.sh` derives it from
+`~/.vendx/vendor-devnet.json` (`solana-keygen new -o ~/.vendx/vendor-devnet.json`).
+Without it the relay quotes a placeholder address nobody controls and says so at
+boot. The buyer pays from the Solana CLI keypair (`~/.config/solana/id.json`, or
+`VENDX_BUYER_KEYPAIR`), which needs devnet SOL (`solana airdrop 1`) and devnet
+USDC from Circle's faucet (https://faucet.circle.com → Solana Devnet, mint
+`4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU`). Check with
+`spl-token balance 4zMM…ncDU --url devnet`.
+
+```bash
+npm run build -w @vendx/agent-buyer && (cd agent-buyer && node dist/index.js)   # against localhost:3402
+RELAY_URL=https://relay.vendx.biz node agent-buyer/dist/index.js               # through the tunnel
+```
+
+The buyer sends one transaction: create the vendor's USDC ATA if missing,
+`transferChecked` of the challenge amount, and a Memo holding the nonce. In
+`verify` mode `/settle` fetches that transaction and refuses to sign unless it
+succeeded, the vendor's USDC balance rose by at least the challenge amount and
+the memo equals the nonce; a signature buys exactly one receipt, and the nonce
+must be one this relay issued. Failure reasons come back as
+`{ success: false, errorReason, detail }` with 402: `payment_not_found`,
+`payment_failed`, `wrong_recipient`, `insufficient_amount`, `memo_mismatch`,
+`signature_reused`, `nonce_unknown|replayed|expired`. `VENDX_SOLANA_RPC`
+overrides the public devnet RPC. `VENDX_FAKE_PAYMENT=1` makes the buyer send a
+fabricated signature; only a `demo` (trust) relay accepts it.
+
+Note: the web `/agent` page still fabricates its signature client-side, so
+against a `verify` relay it stops at `/settle` with `payment_not_found`. Run the
+relay in `demo` mode for that page, or pay from the agent-buyer CLI.
+
+The disposable vendor node has `VENDX_PAY_TO` compiled in (`firmware-vendor/src/config.h`)
+and still quotes the placeholder address; rebuild and reflash **that badge only**
+with the real vendor wallet before selling through it.
+
+`up` and `demo` restart a running relay, so switching is one command. `up`
+stays honest about what it can read: with no badge plugged in it starts in real
+mode anyway and picks the badge up when it appears (payloads say
+`source: "simulator", badgeState: "absent"` until then). If the port is already
+held by another process — in practice `scripts/vendor_console.py` on the
+disposable vendor node, which does not speak the badge console and would be
+reset by a second port owner — `up` points the poller at a non-existent device,
+prints a warning, and the relay reports `mode: simulator`. Plug in the
+conference badge (it shows a `badge> ` prompt) and run `up` again. Log:
+`~/.vendx/relay.log`.
+
 ## Public relay: the cloudflared tunnel
 
 The relay must run on the laptop (it owns the badge's USB port), and Vercel's
 API proxies read `NEXT_PUBLIC_RELAY_URL` at build time. With the variable unset
-they point at localhost and the deployed site returns 503. The fix is a
-cloudflared *quick tunnel* — no Cloudflare account needed, but the
-`*.trycloudflare.com` hostname changes every time cloudflared restarts, and
-each new hostname needs a Vercel env update **and a redeploy**.
+they point at localhost and the deployed site returns 503.
+
+The primary path is the cloudflared **named tunnel** `vendx-relay` at
+`https://relay.vendx.biz` (config `~/.cloudflared/config.yml`; the zone is on
+Cloudflare, registered at Porkbun). The hostname is stable, so cloudflared
+restarts need no redeploy. The fallback is a *quick tunnel* — no Cloudflare
+account needed, but the `*.trycloudflare.com` hostname changes every time
+cloudflared restarts, and each new hostname needs a Vercel env update **and a
+redeploy**. `up` prefers the named hostname whenever it answers.
 
 ```bash
-scripts/relay-tunnel.sh up       # start tunnel if needed, set NEXT_PUBLIC_RELAY_URL (prod+preview), vercel --prod
-scripts/relay-tunnel.sh status   # URL, relay health through the tunnel, which URL is deployed
+scripts/relay-tunnel.sh up       # start tunnel if needed, set NEXT_PUBLIC_RELAY_URL (prod+preview), redeploy if changed
+scripts/relay-tunnel.sh status   # tunnel state, relay health through it, which URL is deployed
 scripts/relay-tunnel.sh down
 ```
 
-State: `~/.vendx/cloudflared.log`, `~/.vendx/relay-public-url`. After a laptop
-reboot run `up` again (relay first: `node relay-proxy/dist/index.js`). For a
-permanent hostname, `cloudflared tunnel login` + a named tunnel replaces the
-quick tunnel; the script would then only need the URL step removed.
-
-The relay's badge poller assumes the factory console. With the vendor node
-plugged in instead, start the relay with the poller pointed nowhere so it
-reports `mode: simulator` honestly rather than wedging on an unknown console:
-
-```bash
-VENDX_BADGE_PORT=/dev/cu.vendx-none node relay-proxy/dist/index.js
-```
+State: `~/.vendx/cloudflared-named.log`, `~/.vendx/cloudflared.log`,
+`~/.vendx/relay-public-url`. After a laptop reboot: `scripts/relay.sh up`, then
+`scripts/relay-tunnel.sh up`. `status` resolves the hostname at 1.1.1.1, because
+this laptop's resolver kept stale Porkbun records for a while after the zone
+moved and made a healthy tunnel look dead; if it reports a stale local record,
+flush with `sudo dscacheutil -flushcache; sudo killall -HUP mDNSResponder`.
+The public internet and Vercel are unaffected by that cache.
 
 ## Vendor node (disposable badge running firmware-vendor)
 
