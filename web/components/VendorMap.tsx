@@ -5,7 +5,9 @@ import { fetchDevices, MULTI_RELAY, RELAYS } from '@/lib/relay';
 /** Fleet on the landing page: one card per device, or an honest empty state. */
 export default async function VendorMap() {
   const result = await fetchDevices();
-  const devices = result.ok ? result.data : [];
+  // The landing-page carousel is vending-shaped (price, earnings) — motion
+  // sensors don't sell anything, so they stay off it and live on /devices only.
+  const devices = result.ok ? result.data.filter((d) => d.kind === 'vendor') : [];
 
   if (devices.length === 0) {
     return (
