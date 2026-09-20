@@ -95,50 +95,98 @@ tail -f docs/STATUS.md
 
 ## Environment variables
 
-No `.env` file is committed. Create `.env.local` (git-ignored) at the repo root:
+Nothing with a secret is committed. Names are listed in `.env.example` at the
+repo root. Where each value lives:
+
+| Where | File | Holds |
+| --- | --- | --- |
+| relay (laptop) | `~/.vendx/relay.env` (chmod 600, sourced by `scripts/relay.sh`) | `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, `VENDX_WEB_SECRET`, `VENDX_RELAY_LABEL` |
+| web (local) | `web/.env.local` | `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, `NEXT_PUBLIC_RELAY_URL`, `VENDX_WEB_BUYER_KEYPAIR`, `VENDX_WEB_SECRET` |
+| web (Vercel) | project settings, prod + preview + development | the same five |
+| buyer / MCP | shell env or `claude mcp add -e …` | `RELAY_URL`, `VENDX_API_KEY`, optional `VENDX_BUYER_KEYPAIR` |
+
+Keys come from the CLI without pasting them into a terminal transcript:
 
 ```bash
-# Solana
-SOLANA_RPC_URL=https://api.devnet.solana.com
-VENDX_NETWORK=solana-devnet
-
-# Facilitator key (relay-proxy)
-FACILITATOR_SECRET_KEY=<base58 64-byte Ed25519 secret key>
-FACILITATOR_PUBLIC_KEY=<base58 32-byte Ed25519 public key>
-
-# Buyer wallet
-BUYER_SECRET_KEY=<base58 64-byte Ed25519 secret key>
-
-# Supabase (local dev — from `supabase status` output)
-SUPABASE_URL=http://127.0.0.1:54321
-SUPABASE_ANON_KEY=<from supabase status>
-SUPABASE_SERVICE_KEY=<from supabase status>
-
-# Vercel (web frontend deploy)
-NEXT_PUBLIC_RELAY_URL=https://<your-relay-proxy-url>
-# Several relays (vendors) side by side: comma-separated label=url. Takes
-# precedence over NEXT_PUBLIC_RELAY_URL. Each relay keeps its own nonces, sales
-# and facilitator key, so the site shows them as separate vendors and pins every
-# payment to the relay that issued the 402 (web/lib/relays.ts).
-NEXT_PUBLIC_RELAYS=jashan=https://relay.vendx.biz,teammate=https://<their-relay>
-NEXT_PUBLIC_SUPABASE_URL=<production Supabase URL>
-NEXT_PUBLIC_SUPABASE_ANON_KEY=<production anon key>
+supabase projects api-keys --project-ref dhjhsupqdmcdyqghxace -o env --reveal > ~/.vendx/supabase-keys.env
+chmod 600 ~/.vendx/supabase-keys.env
+# SUPABASE_DEFAULT_KEY (sb_secret_…) → SUPABASE_SECRET_KEY in relay.env
+# SUPABASE_PUBLISHABLE_KEY           → NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY in web/.env.local and Vercel
 ```
+
+`NEXT_PUBLIC_RELAYS` (comma-separated `label=url`) still works as an override
+for the handshake proxies; the marketplace lists relays from the Supabase
+directory regardless (see below).
 
 The facilitator public key must match what is compiled into the firmware. Changing
-it requires a firmware rebuild and re-flash.
+it requires a firmware rebuild and re-flash. It is also the relay's id in the
+directory, so a fresh checkout without `keys/facilitator.json` registers as a
+new relay (handy for a dev relay; confusing if you meant to be the production one).
 
-## Supabase local dev
+## Supabase (hosted project `Datum-htn`, ref `dhjhsupqdmcdyqghxace`)
+
+The relay is the only writer (service-role key). The website reads the public
+directory and sales view with the publishable key and the signed-in user's own
+rows through RLS. Schema: `supabase/migrations/0003_persistence.sql` (+ `0004`,
+`0005`).
 
 ```bash
-supabase start           # starts Postgres, Studio, Realtime on local ports
-supabase status          # prints API URL, anon/service keys
-supabase db reset        # re-runs migrations + seed
-supabase stop            # shut down
+supabase migration list        # local vs remote versions
+supabase db push               # apply new migrations (password from the keychain since the project is linked)
+supabase config diff           # preview auth settings; `supabase config push` writes only declared properties
 ```
 
-Studio runs at `http://127.0.0.1:54323` by default. Migrations live in
-`supabase/migrations/`.
+What persists: nonces (scoped per relay), used transaction signatures, sales
+(with `agent_id` / `user_id` attribution and the receipt, owner-only), the
+relay/device directory, and agents (API keys, hash only). `scripts/relay.sh up`
+warns when `~/.vendx/relay.env` is missing: the relay then runs on memory,
+nothing survives a restart and API keys are not recognised.
+
+Restart proof (trust mode, no USDC needed):
+
+```bash
+scripts/relay.sh demo
+N=$(curl -s localhost:3402/api/telemetry | jq -r .nonce)
+R=$(curl -s -XPOST localhost:3402/settle -H 'content-type: application/json' \
+     -d "{\"nonce\":\"$N\",\"txSignature\":\"SimTx_$N\",\"amount\":\"100\",\"network\":\"solana-devnet\"}" | jq -r .receipt)
+scripts/relay.sh demo                                   # restart
+curl -s -o /dev/null -w '%{http_code}\n' -H "x-payment-receipt: $R" localhost:3402/api/telemetry   # 200
+curl -s -H "x-payment-receipt: $R" localhost:3402/api/telemetry                                     # {"error":"nonce_replayed"}
+```
+
+## Accounts, agent API keys and the MCP server
+
+1. Sign up on the site (`/login`, email + password, no confirmation mail) and
+   open **Account**.
+2. **Register agent** mints `vendx_sk_…`, shown once. The page prints the
+   install commands with the key filled in:
+
+   ```bash
+   git clone https://github.com/jashanpratapsingh/vendx-htn.git && cd vendx-htn
+   npm install && npm run build -w @vendx/protocol && npm run build -w @vendx/agent-buyer
+   claude mcp add -s user -e VENDX_API_KEY=vendx_sk_… -e RELAY_URL=https://relay.vendx.biz vendx -- node "$PWD/agent-buyer/dist/mcp.js"
+   ```
+
+3. In Claude Code: `vendx_wallet` (creates `~/.vendx/buyer-devnet.json` if the
+   Solana CLI key is absent, prints the address and how to fund it with devnet
+   SOL and Circle devnet USDC), `vendx_list_devices`, `vendx_buy_reading`
+   (real USDC, ~100 µUSDC), `vendx_my_purchases`.
+4. Purchases appear under **Account → Purchases**, on `/marketplace` and
+   `/ledger`. Revoking an agent makes the relay refuse its key with 401 before
+   any payment.
+
+CLI alternative: `RELAY_URL=https://relay.vendx.biz VENDX_API_KEY=vendx_sk_… node agent-buyer/dist/index.js`.
+
+## Buying from the website
+
+Signed-in users can run the handshake on `/agent`. The site pays from a shared
+devnet wallet (`VENDX_WEB_BUYER_KEYPAIR`, a dedicated key at
+`~/.vendx/web-buyer-devnet.json`, funded with a little devnet SOL and USDC),
+settles with `X-Vendx-Web-Secret` + `X-Vendx-User-Id` so the relay records the
+sale against that account, and streams each step to the page. Guards: session
+required, the server fetches its own 402, devnet + USDC mint + per-purchase cap
+(`VENDX_WEB_MAX_MICRO_USDC`, default 100000), five purchases a minute per
+account. Top the wallet up when `/agent` reports `buyer_unfunded`.
 
 ## Firmware
 

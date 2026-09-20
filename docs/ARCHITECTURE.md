@@ -132,14 +132,21 @@ Key views specified in [`docs/FRONTEND_BRIEF.md`](FRONTEND_BRIEF.md):
 
 ### `supabase/` — database
 
-Supabase (Postgres + Realtime) stores:
+Hosted Supabase project (`Datum-htn`). The relay is the only writer (service
+role); the website reads with the publishable key under RLS. Tables, all
+`vendx_`-prefixed (`supabase/migrations/0003_persistence.sql`):
 
-- **Device registry** — vendor wallet, price, metadata, uptime.
-- **Nonce table** — issued challenges with expiry; the relay enforces single-use.
-- **Settlement log** — every settled tx signature, payer, amount, timestamp.
+| Table / view | Written by | Read by | Holds |
+| --- | --- | --- | --- |
+| `vendx_nonces` | relay | relay | issued challenges, `used_at`, scoped by `relay_id`; `vendx_consume_nonce()` burns atomically |
+| `vendx_used_signatures` | relay | relay | one Solana tx buys one receipt, globally |
+| `vendx_sales` (+ view `vendx_sales_public`) | relay via `vendx_record_settlement()` | everyone (view: no receipt, no buyer identity), owner (full row) | every settled sale with `agent_id` / `user_id` attribution |
+| `vendx_relays`, `vendx_devices` | relay heartbeat (30 s) | everyone | the directory: public URL, vendor wallet, price, source, `last_seen` |
+| `vendx_agents` | website via `vendx_create_agent()` (owner) | owner (never `key_hash`), relay (by hash) | API keys as sha256 + prefix |
+| `vendx_accounts` | website (another branch's Phantom login) | — | wallet sign-ins |
 
-Local dev: `supabase start` (requires Supabase CLI). Migrations live in
-`supabase/migrations/`.
+Auth is Supabase Auth (email + password, confirmations off). Agents and
+purchases hang off `auth.users`.
 
 ## Payment handshake — step by step
 
@@ -208,4 +215,4 @@ close the loop after the fact.
 | `firmware-vendor/` | **Source complete** — C++ compiles with PlatformIO; not running on the HTN badge (badge firmware is locked) |
 | `solana-ledger/` | **Source complete** — Anchor scaffold (`initialize` + `commit_batch`); `anchor build` unverified here (toolchain upgraded to Rust 1.98.1 by orchestrator) |
 | `web/` | **Built** — `next build` passes (Next.js 16.3.5 + Tailwind 4.3.3) |
-| `supabase/` | **Migrations applied** — `0001_nonces.sql` applied to hosted Supabase project; local `supabase start` not verified in this session |
+| `supabase/` | **Live** — migrations 0001–0005 applied; relay persists nonces/signatures/sales/directory, website has accounts + agent keys |
