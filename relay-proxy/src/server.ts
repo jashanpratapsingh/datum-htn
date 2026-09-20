@@ -5,8 +5,8 @@ import { fileURLToPath } from 'node:url';
 import { buildDeviceChallenge, verifyDeviceReceipt, VENDOR_PRICE_USD } from './simulator.js';
 import { readBadge, badgeAttached } from './badge-source.js';
 import { captureScreen, screenEnabled } from './badge-screen.js';
-import { settle, type SettleRequest } from './facilitator.js';
-import { recordSale, getSales } from './sales-log.js';
+import { settle, SETTLEMENT_MODE, type SettleRequest } from './facilitator.js';
+import { recordSale, getSales, salesByPayerOn } from './sales-log.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = join(__dirname, '../../data');
@@ -136,6 +136,7 @@ export function createRelayServer(port = DEFAULT_PORT) {
         timestamp: Math.floor(Date.now() / 1000),
         txSignature: settleReq.txSignature,
         source: badgeAttached() ? 'badge' : 'simulator',
+        payer: result.payer,
       });
 
       res.setHeader('X-Payment-Response', result.settleHeader);
@@ -184,11 +185,36 @@ export function createRelayServer(port = DEFAULT_PORT) {
       return json(res, 200, { sales: getSales() });
     }
 
-    // GET /api/policy — APEX spend policy state
+    // GET /api/policy — APEX spend policy state.
+    //
+    // The top-level numbers are the buyer AGENT's budget: agent-buyer writes
+    // data/spend-ledger.json when it pays, and nothing else does. A person
+    // paying through the site with Phantom is a different payer, so their
+    // spend is answered separately: ?payer=<wallet> adds a `payer` block
+    // computed from this relay's settled sales for that wallet today. The
+    // sales log is in memory, so it covers sales since the relay started, and
+    // in trust mode every payer is 'unverified' (the chain was never read).
     if (req.method === 'GET' && pathname === '/api/policy') {
       const ledger = readSpendLedger();
       const spent = BigInt(ledger.spentMicroUsdc);
       const remaining = spent >= DAY_CAP_MICRO_USDC ? 0n : DAY_CAP_MICRO_USDC - spent;
+      const today = new Date().toISOString().slice(0, 10);
+      const payerWallet = url.searchParams.get('payer');
+      let payer: Record<string, unknown> | undefined;
+      if (payerWallet) {
+        const mine = salesByPayerOn(payerWallet, today);
+        const payerSpent = mine.reduce((sum, s) => sum + BigInt(s.amountMicroUsdc), 0n);
+        const payerRemaining = payerSpent >= DAY_CAP_MICRO_USDC ? 0n : DAY_CAP_MICRO_USDC - payerSpent;
+        payer = {
+          wallet: payerWallet,
+          spentMicroUsdc: payerSpent.toString(),
+          remainingMicroUsdc: payerRemaining.toString(),
+          sales: mine.length,
+          lastSaleAt: mine[0]?.timestamp ?? null,
+          date: today,
+          sinceRelayStart: true,
+        };
+      }
       return json(res, 200, {
         capMicroUsdc: DAY_CAP_MICRO_USDC.toString(),
         spentMicroUsdc: spent.toString(),
@@ -199,6 +225,8 @@ export function createRelayServer(port = DEFAULT_PORT) {
         remainingUsd: Number(remaining) / 1_000_000,
         perRequestLimitMicroUsdc: '100',
         perVendorLimitMicroUsdc: '1000000',
+        payersVerified: SETTLEMENT_MODE === 'verify',
+        ...(payer ? { payer } : {}),
       });
     }
 

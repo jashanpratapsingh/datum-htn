@@ -340,6 +340,39 @@ test("GET /api/policy → 200 with correct cap/limit values and today's date", a
   assert.equal(body.date, today);
 });
 
+test('GET /api/policy?payer= → per-wallet spend from settled sales, zero for a stranger', async () => {
+  // Trust mode (these tests) records every payer as 'unverified'; the filter
+  // mechanics are the same as for a real wallet in verify mode. Own nonce and
+  // a fresh txSignature: the relay refuses to settle a signature twice.
+  const r1 = await get('/api/telemetry');
+  assert.equal(r1.status, 402);
+  const { nonce } = (await r1.json()) as { nonce: string };
+  const r2 = await post(
+    '/settle',
+    JSON.stringify({ nonce, txSignature: `SimTx_payer_${Date.now()}`, payTo: VENDOR_WALLET, amount: '100', network: 'solana-devnet' }),
+  );
+  assert.equal(r2.status, 200);
+  const mine = (await (await get('/api/policy?payer=unverified')).json()) as {
+    payersVerified: boolean;
+    payer: { wallet: string; spentMicroUsdc: string; remainingMicroUsdc: string; sales: number; date: string };
+  };
+  assert.equal(mine.payersVerified, false);
+  assert.equal(mine.payer.wallet, 'unverified');
+  assert.ok(mine.payer.sales >= 1);
+  assert.ok(BigInt(mine.payer.spentMicroUsdc) >= 100n);
+  assert.equal(BigInt(mine.payer.spentMicroUsdc) + BigInt(mine.payer.remainingMicroUsdc), 5_000_000n);
+  assert.equal(mine.payer.date, new Date().toISOString().slice(0, 10));
+
+  const stranger = (await (await get('/api/policy?payer=11111111111111111111111111111111')).json()) as {
+    payer: { spentMicroUsdc: string; sales: number };
+  };
+  assert.equal(stranger.payer.spentMicroUsdc, '0');
+  assert.equal(stranger.payer.sales, 0);
+
+  const plain = (await (await get('/api/policy')).json()) as { payer?: unknown };
+  assert.equal(plain.payer, undefined);
+});
+
 test('GET /api/ledger → 200 with programId, network, deployed, entries, compressionNote', async () => {
   const res = await get('/api/ledger');
   assert.equal(res.status, 200);

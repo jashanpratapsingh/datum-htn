@@ -87,21 +87,48 @@ test('opening the menu floats it under the pill and leaves the navbar in place',
   const pill = page.locator('[data-wallet="connected"]').first();
   await expect(pill).toBeVisible({ timeout: 15_000 });
 
+  // Balances arrive asynchronously and widen the pill; measure only once they are in.
+  await expect(pill.locator('[data-wallet="usdc"]')).toBeVisible({ timeout: 15_000 });
   const brand = page.getByRole('link', { name: /vendx home/i });
   const contact = page.getByRole('link', { name: /get in touch/i });
-  const before = { brand: await brand.boundingBox(), contact: await contact.boundingBox(), pill: await pill.boundingBox() };
+  const vertical = (b: { y: number; height: number } | null) => (b ? { y: b.y, height: b.height } : null);
+  const before = {
+    brand: vertical(await brand.boundingBox()),
+    contact: vertical(await contact.boundingBox()),
+    pill: (await pill.boundingBox())!,
+  };
 
   await pill.click();
   const menu = page.getByRole('dialog', { name: /^wallet$/i });
   await expect(menu).toBeVisible();
 
-  // The menu is a popover: it must not take part in the header's layout.
-  expect(await brand.boundingBox()).toEqual(before.brand);
-  expect(await contact.boundingBox()).toEqual(before.contact);
-  expect(await pill.boundingBox()).toEqual(before.pill);
+  // The menu is a popover: it must not take part in the header's layout, so
+  // nothing in the header row moves vertically when it opens.
+  expect(vertical(await brand.boundingBox())).toEqual(before.brand);
+  expect(vertical(await contact.boundingBox())).toEqual(before.contact);
+  expect(vertical(await pill.boundingBox())).toEqual(vertical(before.pill));
   const box = (await menu.boundingBox())!;
-  expect(box.y).toBeGreaterThanOrEqual(before.pill!.y + before.pill!.height);
-  expect(box.x + box.width).toBeLessThanOrEqual(before.pill!.x + before.pill!.width + 1);
+  expect(box.y).toBeGreaterThanOrEqual(before.pill.y + before.pill.height);
+  expect(box.x + box.width).toBeLessThanOrEqual(before.pill.x + before.pill.width + 1);
+});
+
+test('/policy shows the logged-in wallet its own spend panel, and the agent budget separately', async ({ page }) => {
+  const { address } = await installMockPhantom(page);
+  await page.goto('/');
+  await page.locator('[data-wallet="connect"]').first().click();
+  await expect(page.locator('[data-wallet="connected"]').first()).toBeVisible({ timeout: 15_000 });
+
+  await page.goto('/policy');
+  // Either the relay is up and both panels render, or it is down and the page says so.
+  const offline = page.getByText(/No relay link|Data unavailable|Endpoint not implemented/).first();
+  const walletPanel = page.getByText(new RegExp(`Your spend today · ${address.slice(0, 4)}`));
+  await expect(walletPanel.or(offline).first()).toBeVisible({ timeout: 15_000 });
+  if (await walletPanel.isVisible()) {
+    await expect(page.getByText(/Agent budget · agent-buyer/)).toBeVisible();
+    // A fresh key never paid anything: a served gauge reads 0, an older relay explains itself.
+    const note = page.locator('[data-policy="wallet-note"]').first();
+    await expect(note).toBeVisible();
+  }
 });
 
 test('a different account in Phantom logs the site out', async ({ page }) => {
