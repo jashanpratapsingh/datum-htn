@@ -70,6 +70,8 @@ export interface SettleOk {
   attribution: Attribution;
   /** True when this nonce+signature had already been settled and the earlier receipt is returned. */
   idempotent?: boolean;
+  /** Fee payer read from the confirmed transaction; 'unverified' in trust mode. */
+  payer: string;
 }
 
 export interface SettleErr {
@@ -204,6 +206,7 @@ export async function settle(req: SettleRequest, ctx: SettleContext): Promise<Se
           receipt: recorded.priorReceipt,
           settleHeader: encodeSettleHeader(settleResp),
           attribution: ctx.attribution,
+          payer,
           idempotent: true,
         };
       }
@@ -217,5 +220,6 @@ export async function settle(req: SettleRequest, ctx: SettleContext): Promise<Se
     receipt,
     settleHeader: encodeSettleHeader(settleResp),
     attribution: ctx.attribution,
+    payer,
   };
 }
