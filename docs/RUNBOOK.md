@@ -123,6 +123,41 @@ it requires a firmware rebuild and re-flash. It is also the relay's id in the
 directory, so a fresh checkout without `keys/facilitator.json` registers as a
 new relay (handy for a dev relay; confusing if you meant to be the production one).
 
+### Solana-track spine (ports 4021 / 4022)
+
+`npm run demo:solana` runs a standalone node (`relay-proxy/dist/node.js`) and a
+chain-checking facilitator (`relay-proxy/dist/facilitator-server.js`) beside the
+relay. They read their own variables, and their keys are **files** under `keys/`
+(`keys/{treasury,agent,vendor}.json`, created by `npm run keygen`).
+
+```bash
+VENDX_NETWORK=solana-devnet
+VENDX_SETTLEMENT=mock                    # spine only: "mock" or "devnet" (the relay reads verify|trust)
+VENDX_RPC_URL=https://api.devnet.solana.com
+VENDX_NODE_PORT=4021
+VENDX_NODE_URL=http://127.0.0.1:4021
+VENDX_FACILITATOR_PORT=4022
+VENDX_FACILITATOR_URL=http://127.0.0.1:4022
+VENDX_ROOT=.                             # repo root for keys/
+VENDX_RESOURCE=/api/telemetry
+VENDX_CSI_PORT=5005
+VENDX_NODE_ID=1
+VENDX_ROUNDS=1
+VENDX_DEMO_REPLAY=0                      # set 1 to prove nonce_replayed
+VENDX_FORCE_TIER=                        # optional: MEASURED_RSSI | SIMULATED | …
+```
+
+`VENDX_SETTLEMENT` means different things to the two programs (`mock|devnet`
+for the spine, `verify|trust` for the relay), so set it per process, never in a
+shared shell. Badge serial extras for the relay: `VENDX_BADGE_PORT` defaults to
+`COM3` on Windows (`VENDX_PY` is the path to `python.exe` there) and
+`VENDX_ALLOW_SCREEN=1` enables `GET /api/screen`.
+
+Optional on-chain ledger batcher (`vendx-zk`): the relay commits sale batches
+only when **both** `VENDX_LEDGER_AUTHORITY` (JSON secret key) and
+`VENDX_RPC_URL` are set; with neither, `/api/ledger` reports `deployed:false`
+without touching the network.
+
 ## Supabase (hosted project `Datum-htn`, ref `dhjhsupqdmcdyqghxace`)
 
 The relay is the only writer (service-role key). The website reads the public
@@ -294,9 +329,8 @@ cd web
 vercel --prod
 ```
 
-Set the environment variables in the Vercel dashboard. The `NEXT_PUBLIC_*`
-variables are baked in at build time; server-side variables (`SUPABASE_SERVICE_KEY`)
-are injected at runtime.
+Set the environment variables in the Vercel dashboard. `NEXT_PUBLIC_RELAY_URL`
+is baked in at build time — after changing a tunnel hostname, redeploy.
 
 The Phantom login needs four of them on Vercel (production and preview):
 `SESSION_SECRET`, `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `NEXT_PUBLIC_SOLANA_RPC_URL`.

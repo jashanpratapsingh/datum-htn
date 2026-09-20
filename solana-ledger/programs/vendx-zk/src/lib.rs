@@ -14,7 +14,7 @@
  */
 use anchor_lang::prelude::*;
 
-declare_id!("VnDXzkZKqiG2X8kGBJYDqExQEuCz9TnshCHsf2WVEoY");
+declare_id!("5ECE7er8mcx67kUKMp8rMLMXN1EikbzumhJV9defAd37");
 
 /// One telemetry bucket committed to the ledger.
 #[derive(AnchorSerialize, AnchorDeserialize, Clone)]
