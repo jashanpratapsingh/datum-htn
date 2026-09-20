@@ -1,9 +1,15 @@
 import { Panel } from './Panel';
 import { fetchSales, MULTI_RELAY } from '@/lib/relay';
+import { dbSales } from '@/lib/db';
 
-/** Last few settled sales, printed like a receipt. The paper surface. */
+/**
+ * Last few settled sales, printed like a receipt. The paper surface.
+ * History comes from Supabase (survives relay restarts); the relay is the
+ * fallback when the database is not configured.
+ */
 export default async function TelemetryTicker() {
-  const result = await fetchSales();
+  const hist = await dbSales(4);
+  const result = hist.ok ? { ok: true as const, data: hist.data } : await fetchSales();
   const sales = result.ok ? result.data.slice(0, 4) : [];
 
   return (

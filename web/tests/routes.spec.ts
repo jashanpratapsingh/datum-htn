@@ -9,6 +9,9 @@ const ROUTES = [
   { path: '/ledger', heading: /On-chain Ledger/i },
   { path: '/protocol', heading: /Protocol Explorer/i },
   { path: '/docs', heading: /Documentation/i },
+  { path: '/login', heading: /Sign in/i },
+  // Redirects to /login when Supabase is configured; renders the account page otherwise never (no session).
+  { path: '/account', heading: /Sign in|Account/i },
 ];
 
 for (const { path, heading } of ROUTES) {
@@ -64,6 +67,21 @@ test('/agent page shows all 9 handshake steps', async ({ page }) => {
   await page.waitForLoadState('networkidle');
   const steps = page.getByRole('list', { name: /handshake steps/i }).getByRole('listitem');
   await expect(steps).toHaveCount(9);
+});
+
+test('/account without a session lands on /login when auth is configured', async ({ page }) => {
+  test.skip(!process.env.NEXT_PUBLIC_SUPABASE_URL, 'Supabase env not set');
+  await page.goto('/account');
+  await expect(page).toHaveURL(/\/login\?next=%2Faccount/);
+  await expect(page.locator('h1').first()).toHaveText(/Sign in/i);
+});
+
+test('nav exposes the Account link on mobile', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto('/');
+  await page.getByRole('button', { name: /open navigation/i }).click();
+  const menu = page.getByRole('dialog', { name: /navigation menu/i });
+  await expect(menu.getByRole('link', { name: 'Account' })).toBeVisible();
 });
 
 test('/protocol page has 4 step sections', async ({ page }) => {

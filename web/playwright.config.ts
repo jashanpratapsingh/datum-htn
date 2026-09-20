@@ -1,5 +1,8 @@
 import { defineConfig, devices } from '@playwright/test';
 
+// Other local servers often hold :3000; E2E_PORT moves the whole run.
+const PORT = process.env.E2E_PORT ?? '3000';
+
 export default defineConfig({
   testDir: './tests',
   fullyParallel: false,
@@ -7,7 +10,7 @@ export default defineConfig({
   workers: 1,
   reporter: 'list',
   use: {
-    baseURL: 'http://localhost:3000',
+    baseURL: `http://localhost:${PORT}`,
     trace: 'off',
   },
   projects: [
@@ -17,8 +20,8 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: `PATH="${process.env.HOME}/.nvm/versions/node/v22.23.2/bin:$PATH" npm run start`,
-    url: 'http://localhost:3000',
+    command: `PATH="${process.env.HOME}/.nvm/versions/node/v22.23.2/bin:$PATH" PORT=${PORT} npm run start`,
+    url: `http://localhost:${PORT}`,
     reuseExistingServer: true,
     timeout: 30_000,
   },

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import AuthStatus from './auth/AuthStatus';
 
 const LINKS = [
   { href: '/devices', label: 'Devices' },
@@ -10,6 +11,7 @@ const LINKS = [
   { href: '/ledger', label: 'Ledger' },
   { href: '/protocol', label: 'Protocol' },
   { href: '/docs', label: 'Docs' },
+  { href: '/account', label: 'Account' },
 ];
 
 export default function NavBar() {
@@ -80,12 +82,9 @@ export default function NavBar() {
           ))}
         </nav>
 
-        <a
-          href="mailto:hello@vendx.dev"
-          className="hidden text-[15px] text-ink underline underline-offset-4 decoration-ink/40 hover:decoration-ink md:inline"
-        >
-          Get in touch
-        </a>
+        <div className="hidden md:flex md:items-center">
+          <AuthStatus />
+        </div>
 
         <button
           type="button"
@@ -138,6 +137,9 @@ export default function NavBar() {
               {l.label}
             </a>
           ))}
+          <div className="mt-1">
+            <AuthStatus compact />
+          </div>
           <button
             type="button"
             onClick={() => setOpen(false)}
