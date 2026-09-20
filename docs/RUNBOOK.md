@@ -318,3 +318,24 @@ scripts/relay-tunnel.sh up          # rewrites NEXT_PUBLIC_RELAYS and redeploys 
 ```
 
 Their relay must serve the same REST surface (docs/API.md) with CORS on.
+
+## Deploying the web app
+
+The Vercel project `web` is linked to GitHub `jashanpratapsingh/vendx-htn` with
+production branch **main** and Root Directory **web** (set 2026-09-20). Every
+merge to main builds and, if green, becomes production at
+https://web-rouge-six-46.vercel.app. `vercel --prod` from `web/` still works
+for a manual deploy of the working tree.
+
+`web/` consumes `@vendx/protocol` as a tarball (`file:./vendx-protocol.tgz`)
+rather than a workspace link, and the root `package-lock.json` pins that
+tarball's sha512. If the two disagree, every clean install fails with
+EINTEGRITY — which is why all git-triggered builds failed until 2026-09-20.
+Whenever `packages/vendx-protocol` changes:
+
+```bash
+scripts/pack-protocol.sh          # rebuilds, re-packs, pins the hash
+git add web/vendx-protocol.tgz package-lock.json
+```
+
+and commit both files together.
