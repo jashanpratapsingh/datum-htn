@@ -9,14 +9,19 @@ anchor_version = "0.31.1"
 resolution = true
 skip-lint = false
 
+# Fresh program keypair generated 2026-09-19 — the previous vanity ID
+# VnDXzkZKqiG2X8kGBJYDqExQEuCz9TnshCHsf2WVEoY had no matching keypair on disk.
 [programs.localnet]
-vendx_zk = "VnDXzkZKqiG2X8kGBJYDqExQEuCz9TnshCHsf2WVEoY"
+vendx_zk = "5ECE7er8mcx67kUKMp8rMLMXN1EikbzumhJV9defAd37"
+
+[programs.devnet]
+vendx_zk = "5ECE7er8mcx67kUKMp8rMLMXN1EikbzumhJV9defAd37"
 
 [registry]
 url = "https://api.apr.dev"
 
 [provider]
-cluster = "localnet"
+cluster = "devnet"
 wallet = "~/.config/solana/id.json"
 
 [scripts]

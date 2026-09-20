@@ -8,9 +8,11 @@ import { ArrowLeft, ArrowRight, Quote, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 /*
-  Retro testimonial cards: aged paper, a sepia portrait, a lowercase line.
-  Adapted to the site's single grotesque and ink palette; the paper gradient
-  and stain texture are the one place the page is allowed to look old.
+  Retro testimonial cards: a sheet of paper, a portrait, a lowercase line.
+  Adapted to the site's single grotesque and ink palette: the sheet runs from
+  the pill white down to the panel grey, the stain texture is kept but pushed
+  to grayscale and turned well down, so the card reads as one more panel
+  resting on the canvas rather than a yellowed clipping.
 */
 
 export interface iTestimonial {
@@ -211,7 +213,7 @@ const TestimonialCard = ({
               role="dialog"
               aria-modal="true"
               aria-label={testimonial.name}
-              className="relative z-[60] mx-auto h-full max-w-5xl overflow-y-auto rounded-3xl bg-gradient-to-b from-[#f2f0eb] to-[#fff9eb] p-4 md:mt-10 md:p-10"
+              className="relative z-[60] mx-auto h-full max-w-5xl overflow-y-auto rounded-3xl border border-rule bg-gradient-to-b from-pill to-canvas-lift p-4 md:mt-10 md:p-10"
             >
               <button
                 type="button"
@@ -258,8 +260,8 @@ const TestimonialCard = ({
           transition: { duration: 0.3, ease: 'easeOut' },
         }}
       >
-        <div className="relative z-10 flex h-[500px] w-80 flex-col items-center justify-center overflow-hidden rounded-3xl bg-gradient-to-b from-[#f2f0eb] to-[#fff9eb] shadow-md md:h-[550px] md:w-96">
-          <div className="absolute inset-0 opacity-30" aria-hidden="true">
+        <div className="relative z-10 flex h-[500px] w-80 flex-col items-center justify-center overflow-hidden rounded-3xl border border-rule bg-gradient-to-b from-pill to-canvas-lift shadow-md md:h-[550px] md:w-96">
+          <div className="absolute inset-0 opacity-[0.14] grayscale" aria-hidden="true">
             <Image
               className="object-cover object-center"
               src={backgroundImage}
@@ -295,7 +297,7 @@ const ProfileImage = ({ src, alt, ...rest }: ImageProps) => {
   const [isLoading, setLoading] = useState(true);
 
   return (
-    <div className="relative aspect-square h-[90px] w-[90px] flex-none overflow-hidden rounded-full border-[3px] border-solid border-[rgba(59,59,59,0.6)] opacity-80 saturate-[0.2] sepia-[0.46] md:h-[150px] md:w-[150px]">
+    <div className="relative aspect-square h-[90px] w-[90px] flex-none overflow-hidden rounded-full border-[3px] border-solid border-ink/40 opacity-80 grayscale md:h-[150px] md:w-[150px]">
       <Image
         className={cn(
           'absolute inset-0 z-20 rounded-full object-cover transition duration-300',

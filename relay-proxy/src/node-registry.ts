@@ -13,8 +13,11 @@
  *
  * A node registers on every station connect and heartbeats after that
  * (firmware-vendor/src/main.cpp, `registerWithRelay`). The registry is
- * in-memory like the sales log: a relay restart forgets nodes until their next
- * heartbeat, which is at most `heartbeatSec` away.
+ * in-memory: a relay restart forgets nodes until their next heartbeat, which
+ * is at most `heartbeatSec` away. Live nodes also ride along in the relay's
+ * directory heartbeat (heartbeat.ts), and "one receipt per node nonce" is the
+ * Store's job — sales are keyed by nonce, so a second settle of the same
+ * node nonce fails as nonce_replayed even after a restart.
  *
  * Registration is a claim, not a proof. After accepting one the relay probes
  * the node's /health at the URL it gave (off the request path, bounded) and
@@ -69,8 +72,6 @@ export interface NodeView extends NodeRecord {
 }
 
 const nodes = new Map<string, NodeRecord>();
-/** Nonces minted by nodes that this relay has already settled. */
-const settledNodeNonces = new Map<string, number>();
 
 const now = () => Math.floor(Date.now() / 1000);
 
@@ -165,19 +166,6 @@ export function findNodeByPayTo(payTo: string): NodeView | undefined {
 }
 
 /**
- * Remember that a node-minted nonce has been settled. The device burns the
- * nonce itself when the receipt is redeemed; this stops the relay from signing
- * two receipts for one nonce in between. Entries expire with the receipt.
- */
-export function claimNodeNonce(nonce: string, ttlSec = 600): boolean {
-  const t = now();
-  for (const [k, exp] of settledNodeNonces) if (exp < t) settledNodeNonces.delete(k);
-  if (settledNodeNonces.has(nonce)) return false;
-  settledNodeNonces.set(nonce, t + ttlSec);
-  return true;
-}
-
-/**
  * Ask the node's URL whether it is the device it claims to be. Bounded, off
  * the request path (callers do not await it in a handler), never throws.
  */
@@ -205,5 +193,4 @@ export async function probeNode(deviceId: string, timeoutMs = 3000): Promise<voi
 /** Test hook: forget every node. */
 export function _resetNodes(): void {
   nodes.clear();
-  settledNodeNonces.clear();
 }

@@ -1,0 +1,29 @@
+/*
+ * ESPectre - Periodic Sensing Status Logger
+ *
+ * Periodically logs sensing status snapshots.
+ *
+ * Author: Francesco Pace <francesco.pace@gmail.com>
+ * SPDX-License-Identifier: GPL-3.0-only
+ * Commercial licensing available under separate agreement; see LICENSING.md.
+ */
+#pragma once
+
+#include <cstdint>
+
+#include "runtime_diagnostics.h"
+#include "runtime_snapshot.h"
+
+namespace presence_node {
+
+class PeriodicSensingStatusLogger {
+ public:
+  void log_status(const char *tag,
+                  const RuntimeSnapshot &snapshot,
+                  uint32_t packets_per_publish,
+                  const RuntimeDiagnosticsSample *diagnostics = nullptr);
+  /** Retained for compatibility; rate history is owned by the diagnostic sampler. */
+  void reset() {}
+};
+
+}  // namespace presence_node

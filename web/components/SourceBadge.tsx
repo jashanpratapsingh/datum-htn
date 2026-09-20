@@ -1,5 +1,7 @@
 import type { Source } from '@/lib/relay';
 
+export type { Source };
+
 /**
  * Provenance stamp on every reading.
  *

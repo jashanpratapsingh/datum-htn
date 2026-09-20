@@ -4,7 +4,8 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const KEYS_DIR = join(__dirname, '../../keys');
+/** Where facilitator.json lives. VENDX_KEYS_DIR lets a dev relay carry its own identity beside the production one. */
+const KEYS_DIR = process.env.VENDX_KEYS_DIR ?? join(__dirname, '../../keys');
 const KEYS_FILE = join(KEYS_DIR, 'facilitator.json');
 
 export interface FacilitatorKeys {

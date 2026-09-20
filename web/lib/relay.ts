@@ -75,7 +75,7 @@ function combine<A, B>(
  * Provenance of a device or a sale. `badge`: read off the conference badge's
  * serial console by the relay. `esp32c3`: a VENDX node running
  * firmware-vendor, serving x402 itself and registered with the relay.
- * `simulator`: software. Mirrors SaleSource in relay-proxy/src/sales-log.ts.
+ * `simulator`: software. Mirrors SaleSource in relay-proxy/src/store/types.ts.
  */
 export type Source = 'badge' | 'simulator' | 'esp32c3';
 
@@ -121,14 +121,31 @@ export interface SaleEntry {
   resource: string;
   description: string;
   source: Source;
+  /** Buyer wallet, when the relay verified the transfer on-chain. */
+  payer?: string;
+  /** True when the sale was tied to an account (agent key or web purchase). */
+  attributed?: boolean;
+}
+
+export interface WalletSpend {
+  wallet: string;
+  spentMicroUsdc: string;
+  remainingMicroUsdc: string;
+  sales: number;
+  lastSaleAt: number | null;
 }
 
 export interface PolicyStatus {
   relay: RelayInfo;
+  /** The buyer agent's budget (agent-buyer's data/spend-ledger.json on that relay's machine). */
   dailyCapMicroUsdc: string;
   spentMicroUsdc: string;
   remainingMicroUsdc: string;
   date: string;
+  /** Whether this relay learns the payer from the chain (verify mode). Undefined on older relays. */
+  payersVerified?: boolean;
+  /** The asked-for wallet's spend today on this relay; undefined when not asked or when the relay predates it. */
+  wallet?: WalletSpend;
   /** Not served by the relay yet. Absent, not empty — the page must say so. */
   denials?: Array<{ timestamp: number; reason: string; amount: string; deviceId?: string }>;
 }
@@ -196,6 +213,9 @@ interface WireSale {
   timestamp: number;
   txSignature: string;
   source: Source;
+  payer?: string;
+  agentId?: string | null;
+  userId?: string | null;
 }
 
 interface WirePolicy {
@@ -203,6 +223,17 @@ interface WirePolicy {
   spentMicroUsdc: string;
   remainingMicroUsdc: string;
   date: string;
+  /** Present on relays that know who paid (settlement verified on-chain). */
+  payersVerified?: boolean;
+  /** Only when asked with ?payer=; only on relays that serve it. */
+  payer?: {
+    wallet: string;
+    spentMicroUsdc: string;
+    remainingMicroUsdc: string;
+    sales: number;
+    lastSaleAt: number | null;
+    date: string;
+  };
 }
 
 interface WireLedger {
@@ -329,6 +360,8 @@ export async function fetchSales(): Promise<RelayResult<SaleEntry[]>> {
           resource: SALE_RESOURCE,
           description: SALE_DESCRIPTION,
           source: s.source,
+          payer: s.payer,
+          attributed: Boolean(s.agentId || s.userId),
         })),
       )
       .sort(byNewest),
@@ -339,8 +372,10 @@ export async function fetchSales(): Promise<RelayResult<SaleEntry[]>> {
  * The spend policy is the buyer agent's, and each relay reports the ledger on
  * its own machine, so there is one policy per relay — never summed.
  */
-export async function fetchPolicy(): Promise<RelayResult<PolicyStatus[]>> {
-  const { oks, failed } = await fanout((relay) => _fetch<WirePolicy>(relay, '/api/policy'));
+/** @param payer a logged-in wallet whose own spend today should ride along. */
+export async function fetchPolicy(payer?: string): Promise<RelayResult<PolicyStatus[]>> {
+  const path = payer ? `/api/policy?payer=${encodeURIComponent(payer)}` : '/api/policy';
+  const { oks, failed } = await fanout((relay) => _fetch<WirePolicy>(relay, path));
   return combine(oks, failed, (all) =>
     all.map(({ relay, data: p }) => ({
       relay,
@@ -348,6 +383,17 @@ export async function fetchPolicy(): Promise<RelayResult<PolicyStatus[]>> {
       spentMicroUsdc: p.spentMicroUsdc,
       remainingMicroUsdc: p.remainingMicroUsdc,
       date: p.date,
+      payersVerified: p.payersVerified,
+      wallet:
+        p.payer && payer && p.payer.wallet === payer
+          ? {
+              wallet: p.payer.wallet,
+              spentMicroUsdc: p.payer.spentMicroUsdc,
+              remainingMicroUsdc: p.payer.remainingMicroUsdc,
+              sales: p.payer.sales,
+              lastSaleAt: p.payer.lastSaleAt,
+            }
+          : undefined,
       // Left undefined on purpose: the relay does not serve a denial log yet.
     })),
   );

@@ -23,6 +23,13 @@ export PATH="$HOME/.nvm/versions/node/v22.23.2/bin:$PATH"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 STATE="$HOME/.vendx"; mkdir -p "$STATE"
 LOG="$STATE/relay.log"; PIDF="$STATE/relay.pid"; MODEF="$STATE/relay.mode"
+# Secrets and per-machine settings live outside the repo (chmod 600), never echoed:
+#   SUPABASE_URL, SUPABASE_SECRET_KEY  → persistence (nonces, sales, directory survive restarts)
+#   VENDX_WEB_SECRET                   → lets the website attribute its purchases to accounts
+#   VENDX_RELAY_LABEL                  → how this relay is listed in the directory
+if [ -f "$STATE/relay.env" ]; then set -a; . "$STATE/relay.env"; set +a; fi
+# How the directory advertises this relay. The tunnel script writes relay-public-url.
+PUBLIC_URL="${VENDX_PUBLIC_URL:-$(cat "$STATE/relay-public-url" 2>/dev/null || echo https://relay.vendx.biz)}"
 RELAY_PORT="${RELAY_PORT:-3402}"
 BADGE_PORT="${VENDX_BADGE_PORT:-/dev/cu.usbmodem101}"
 NONE_PORT="/dev/cu.vendx-none"
@@ -66,12 +73,18 @@ start_relay() {  # $1 = poller port, $2 = mode label, $3 = settlement (verify|tr
     echo "[relay] WARNING: no vendor wallet. Set VENDX_VENDOR_WALLET or create $VENDOR_KEYPAIR;"
     echo "[relay] the relay will quote a placeholder address that nobody controls."
   fi
+  if [ -z "${SUPABASE_URL:-}" ] || [ -z "${SUPABASE_SECRET_KEY:-${SUPABASE_SERVICE_ROLE_KEY:-}}" ]; then
+    echo "[relay] WARNING: no Supabase credentials in $STATE/relay.env — nonces, sales and the directory"
+    echo "[relay] will NOT survive a restart, and agent API keys will not be recognised. See docs/RUNBOOK.md."
+  fi
   # `env` so the optional wallet assignment can be produced by expansion.
-  env VENDX_BADGE_PORT="$1" VENDX_SETTLEMENT="$3" RELAY_PORT="$RELAY_PORT" ${wallet:+VENDX_VENDOR_WALLET="$wallet"} \
+  # SUPABASE_* and VENDX_WEB_SECRET are inherited from relay.env (set -a above).
+  env VENDX_BADGE_PORT="$1" VENDX_SETTLEMENT="$3" RELAY_PORT="$RELAY_PORT" VENDX_PUBLIC_URL="$PUBLIC_URL" \
+    ${wallet:+VENDX_VENDOR_WALLET="$wallet"} \
     nohup node "$ENTRY" > "$LOG" 2>&1 &
   echo $! > "$PIDF"; echo "$2" > "$MODEF"
   for _ in $(seq 1 40); do curl -s -m 1 "http://localhost:$RELAY_PORT/health" >/dev/null 2>&1 && break; sleep 0.25; done
-  echo "[relay] pid $(cat "$PIDF"), mode=$2, poller=$1, settlement=$3, vendor=${wallet:-<placeholder>}"
+  echo "[relay] pid $(cat "$PIDF"), mode=$2, poller=$1, settlement=$3, vendor=${wallet:-<placeholder>}, public=$PUBLIC_URL"
   printf '[relay] /health: '; curl -s -m 3 "http://localhost:$RELAY_PORT/health" || echo "not answering yet (see $LOG)"; echo
 }
 
@@ -116,6 +129,7 @@ cmd_status() {
     echo "relay: not running"
   fi
   printf '/health: '; curl -s -m 3 "http://localhost:$RELAY_PORT/health" || echo "unreachable"; echo
+  echo "supabase: ${SUPABASE_URL:+configured ($(printf '%s' "$SUPABASE_URL" | sed -E 's#https?://##'))}${SUPABASE_URL:-not configured (memory only)}"
   if [ -e "$BADGE_PORT" ]; then
     local holder; holder="$(port_holder)"
     echo "badge port $BADGE_PORT: present${holder:+, held by $holder ($(port_holder_cmd))}"

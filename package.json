@@ -8,7 +8,16 @@
   "scripts": {
     "build": "npm run build --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test -w @vendx/protocol && npm run test -w @vendx/relay-proxy && npm run test -w @vendx/agent-buyer",
     "demo": "npm run build -w @vendx/relay-proxy && node scripts/demo.mjs",
-    "fleet": "./scripts/fleet.sh"
+    "demo:solana": "npm run build && node scripts/demo-solana.mjs",
+    "keygen": "npm run build -w @vendx/protocol && node scripts/keygen.mjs",
+    "fund": "npm run build -w @vendx/protocol && node scripts/fund.mjs",
+    "tunnel": "node scripts/tunnel.mjs",
+    "xlang": "npm run vectors -w @vendx/protocol && node firmware-vendor/test/xlang.mjs",
+    "allowance": "npm run build -w @vendx/agent-buyer && npm run allowance -w @vendx/agent-buyer --",
+    "sense": "npm run build -w @vendx/relay-proxy && npm run sense -w @vendx/relay-proxy",
+    "fleet": "./scripts/fleet.sh",
+    "mcp": "npm run build -w @vendx/mcp-server && node packages/vendx-mcp/dist/server.js"
   }
 }

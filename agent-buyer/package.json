@@ -5,19 +5,27 @@
   "type": "module",
   "main": "./dist/index.js",
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json && chmod +x dist/mcp.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "start": "node dist/index.js",
-    "test": "npm run build && node --test dist/policy.test.js"
+    "buy": "node dist/buy-node.js",
+    "allowance": "node dist/bin/allowance.js",
+    "test": "npm run build && node --test dist/policy.test.js",
+    "mcp": "node dist/mcp.js"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "@solana/spl-token": "^0.4.15",
     "@solana/web3.js": "^1.99.0",
     "@vendx/protocol": "*",
-    "tweetnacl": "^1.0.3"
+    "tweetnacl": "^1.0.3",
+    "zod": "^4.6.5"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
     "typescript": "^5.7.2"
+  },
+  "bin": {
+    "vendx-mcp": "./dist/mcp.js"
   }
 }

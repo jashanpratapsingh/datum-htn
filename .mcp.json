@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "vendx": {
+      "type": "http",
+      "url": "https://vendx.biz/api/mcp"
+    }
+  }
+}
